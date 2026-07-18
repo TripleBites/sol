@@ -1,13 +1,13 @@
 const std = @import("std");
-const glfw = @import("zglfw");
-const zaudio = @import("zaudio");
 const Io = std.Io;
 const pocketpy = @import("pocketpy");
+const window = @import("graphics/window.zig");
+const audio = @import("audio/audio.zig");
 
 /// Sol Game Engine — Entry Point
 ///
-/// Bootstraps the engine and runs a minimal pocketpy hello-world script to
-/// verify that the Python interpreter is linked and callable.
+/// Bootstraps the engine subsystems (pocketpy, graphics window, audio) and
+/// runs a minimal smoke test to verify every library is linked and callable.
 pub fn main(init: std.process.Init) !void {
     const arena = init.arena.allocator();
     const args = try init.minimal.args.toSlice(arena);
@@ -39,8 +39,9 @@ pub fn main(init: std.process.Init) !void {
     try stdout.print("[info] Optimize:       {s}\n", .{@tagName(builtin.mode)});
     try stdout.print("[info] pocketpy:       {s}\n\n", .{pocketpy.versionString()});
 
-    // ---- Hello-world Python via pocketpy ----
+    // ---- pocketpy smoke test ----
     try stdout.print("--- pocketpy smoke test ---\n", .{});
+    try stdout.flush();
 
     pocketpy.initialize();
     defer pocketpy.finalize();
@@ -51,44 +52,30 @@ pub fn main(init: std.process.Init) !void {
     if (!py_ok) {
         try stdout.print("[warn] Python script failed\n", .{});
     }
-
-    // Flush all output before touching GLFW (buffered stdout + C stdout).
     try stdout.flush();
 
-    // ---- GLFW window ----
-    try stdout.print("[info] glfw:           initializing...\n", .{});
-    try stdout.flush();
+    // ---- graphics window ----
+    try window.init();
+    defer window.terminate();
 
-    // Wayland backend is disabled at build time (see build.zig).
-    // Only X11 is compiled in, so the platform hint is redundant but safe.
+    const win = try window.Window.create(600, 600, "Sol Engine — Smoke Test");
+    defer win.destroy();
 
-    try glfw.init();
-    defer glfw.terminate();
+    // ---- audio engine ----
+    audio.init(arena);
+    defer audio.deinit();
 
-    try stdout.print("[info] glfw:           creating window...\n", .{});
-    try stdout.flush();
-
-    const window = try glfw.Window.create(600, 600, "Sol Engine — Smoke Test", null, null);
-    defer window.destroy();
-
-    // ---- zaudio engine ----
-    zaudio.init(arena);
-    defer zaudio.deinit();
-
-    const engine = try zaudio.Engine.create(null);
+    const engine = try audio.Engine.create(null);
     defer engine.destroy();
 
-    // Flush buffered output before entering the render loop.
     try stdout.flush();
 
     // ---- main loop (close window to exit) ----
-    while (!window.shouldClose()) {
-        glfw.pollEvents();
-        window.swapBuffers();
+    while (!win.shouldClose()) {
+        window.pollEvents();
+        win.swapBuffers();
     }
 
     try stdout.print("\n[ ok ] Engine bootstrap complete.\n", .{});
-
-    // Always flush before exit.
     try stdout.flush();
 }
