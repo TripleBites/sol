@@ -1,0 +1,21 @@
+.{
+    .name = .sol,
+    .version = "0.1.0-dev",
+    .fingerprint = 0xf975500a01aa2ee,
+    .minimum_zig_version = "0.17.0-dev.1257+67b05e521",
+
+    .dependencies = .{
+        .zaudio = .{
+            .path = "src/core/libs/zaudio",
+        },
+        .zglfw = .{
+            .path = "src/core/libs/zglfw",
+        },
+    },
+
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}
