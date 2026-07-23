@@ -1,130 +1,177 @@
 const std = @import("std");
-const pocketpy = @import("pocketpy");
-const Io = std.Io;
 
-pub const WIDTH: usize = 320;
-pub const HEIGHT: usize = 240;
-pub const BUFFER_SIZE: usize = WIDTH * HEIGHT * 4; // 4 bytes per pixel (RGBA)
+// ── Display constants ────────────────────────────────────────────────────────
+pub const WIDTH: u32 = 320;
+pub const HEIGHT: u32 = 240;
+pub const BUFFER_SIZE: usize = @as(usize, WIDTH * HEIGHT * 4);
 
-pub const GameState = struct {
+// ── Input (Handmade Hero style) ──────────────────────────────────────────────
+/// A single button — the game reads `ended_down` for held state and
+/// `half_transition_count` to detect presses / releases.
+pub const Button = struct {
+    ended_down: bool = false,
+    half_transition_count: u32 = 0,
+};
+
+pub const EngineInput = struct {
+    // Keyboard
+    move_up: Button = .{},
+    move_down: Button = .{},
+    move_left: Button = .{},
+    move_right: Button = .{},
+    action1: Button = .{},
+    action2: Button = .{},
+
+    // Mouse
+    mouse_x: i32 = 0,
+    mouse_y: i32 = 0,
+    mouse_buttons: [3]Button = [_]Button{.{}, .{}, .{}},
+
+    // Timing (seconds since the last frame)
+    dt_for_frame: f32 = 1.0 / 60.0,
+};
+
+// ── Engine / Game State ──────────────────────────────────────────────────────
+pub const EngineContext = struct {
+    framebuffer: [BUFFER_SIZE]u8 = undefined,
+
+    // Game state (this is the "game" part — replace with your own later)
     player_x: f32 = 100.0,
     player_y: f32 = 100.0,
     velocity_x: f32 = 60.0,
     velocity_y: f32 = 80.0,
-    // The raw pixel buffer that the platform layer will display
-    framebuffer: [BUFFER_SIZE]u8 = undefined,
 
-    pub fn init(self: *GameState) void {
-        // Initialize screen to dark gray
+    // Previous frame's input — used for transition detection
+    prev_input: EngineInput = .{},
+
+    // ── Initialisation ────────────────────────────────────────────────────
+    pub fn init(self: *EngineContext) void {
         self.clearScreen(0xFF1E1E1E);
     }
 
-    pub fn update(self: *GameState, delta_time: f32) void {
-        // Move player
-        self.player_x += self.velocity_x * delta_time;
-        self.player_y += self.velocity_y * delta_time;
+    // ── Per-frame update + render ─────────────────────────────────────────
+    /// The platform layer calls this exactly once per frame with the
+    /// latest input snapshot.  The engine writes its pixels into
+    /// `self.framebuffer` and the platform is responsible for displaying them.
+    pub fn updateAndRender(self: *EngineContext, input: EngineInput) void {
+        // ── Process button transitions ──
+        //  (Handmade Hero style — the game can see exactly what happened)
+        const pressed_up = wasPressed(&input.move_up, &self.prev_input.move_up);
+        const pressed_down = wasPressed(&input.move_down, &self.prev_input.move_down);
+        const pressed_left = wasPressed(&input.move_left, &self.prev_input.move_left);
+        const pressed_right = wasPressed(&input.move_right, &self.prev_input.move_right);
+        const pressed_action1 = wasPressed(&input.action1, &self.prev_input.action1);
+        _ = pressed_up;
+        _ = pressed_down;
+        _ = pressed_left;
+        _ = pressed_right;
+        _ = pressed_action1;
 
-        // Bounce off screen bounds
-        if (self.player_x < 0 or self.player_x > @as(f32, @floatFromInt(WIDTH - 16))) {
-            self.velocity_x *= -1.0;
-        }
-        if (self.player_y < 0 or self.player_y > @as(f32, @floatFromInt(HEIGHT - 16))) {
-            self.velocity_y *= -1.0;
+        // ── Movement with held keys ──
+        if (input.move_up.ended_down) {
+            self.velocity_y = -80.0;
+        } else if (input.move_down.ended_down) {
+            self.velocity_y = 80.0;
+        } else {
+            self.velocity_y = 0;
         }
 
-        // Render frame
+        if (input.move_left.ended_down) {
+            self.velocity_x = -60.0;
+        } else if (input.move_right.ended_down) {
+            self.velocity_x = 60.0;
+        } else {
+            self.velocity_x = 0;
+        }
+
+        // ── Physics update ──
+        self.player_x += self.velocity_x * input.dt_for_frame;
+        self.player_y += self.velocity_y * input.dt_for_frame;
+
+        // Bounce / clamp
+        const max_x: f32 = @floatFromInt(WIDTH - 16);
+        const max_y: f32 = @floatFromInt(HEIGHT - 16);
+
+        if (self.player_x < 0) {
+            self.player_x = 0;
+            self.velocity_x = 60.0;
+        } else if (self.player_x > max_x) {
+            self.player_x = max_x;
+            self.velocity_x = -60.0;
+        }
+        if (self.player_y < 0) {
+            self.player_y = 0;
+            self.velocity_y = 80.0;
+        } else if (self.player_y > max_y) {
+            self.player_y = max_y;
+            self.velocity_y = -80.0;
+        }
+
+        // ── Render ──
         self.clearScreen(0xFF1E1E1E);
+
+        // Draw a moving player square
         self.drawRect(
-            @as(usize, @intFromFloat(self.player_x)),
-            @as(usize, @intFromFloat(self.player_y)),
+            @intFromFloat(self.player_x),
+            @intFromFloat(self.player_y),
             16,
             16,
-            0xFF00FFFF, // Yellow box in ABGR memory layout (RGBA in little-endian)
+            0xFF00FFFF, // cyan (RGBA in little-endian → B, G, R, A in bytes)
         );
+
+        // ── Save input for next frame ──
+        self.prev_input = input;
     }
 
-    fn clearScreen(self: *GameState, color: u32) void {
+    // ── Internal helpers ──────────────────────────────────────────────────
+    fn clearScreen(self: *EngineContext, color: u32) void {
+        const r: u8 = @truncate(color >> 0);
+        const g: u8 = @truncate(color >> 8);
+        const b: u8 = @truncate(color >> 16);
+        const a: u8 = @truncate(color >> 24);
+
+        @memset(self.framebuffer[0..BUFFER_SIZE], 0);
         var i: usize = 0;
         while (i < BUFFER_SIZE) : (i += 4) {
-            self.framebuffer[i + 0] = @truncate(color >> 0); // R
-            self.framebuffer[i + 1] = @truncate(color >> 8); // G
-            self.framebuffer[i + 2] = @truncate(color >> 16); // B
-            self.framebuffer[i + 3] = @truncate(color >> 24); // A
+            self.framebuffer[i + 0] = r;
+            self.framebuffer[i + 1] = g;
+            self.framebuffer[i + 2] = b;
+            self.framebuffer[i + 3] = a;
         }
     }
 
-    fn drawRect(self: *GameState, x: usize, y: usize, w: usize, h: usize, color: u32) void {
+    fn drawRect(self: *EngineContext, x: usize, y: usize, w: usize, h: usize, color: u32) void {
+        const r: u8 = @truncate(color >> 0);
+        const g: u8 = @truncate(color >> 8);
+        const b: u8 = @truncate(color >> 16);
+        const a: u8 = @truncate(color >> 24);
+
         var row: usize = 0;
         while (row < h) : (row += 1) {
             const py = y + row;
             if (py >= HEIGHT) continue;
-
             var col: usize = 0;
             while (col < w) : (col += 1) {
                 const px = x + col;
                 if (px >= WIDTH) continue;
-
-                const index = (py * WIDTH + px) * 4;
-                self.framebuffer[index + 0] = @truncate(color >> 0);
-                self.framebuffer[index + 1] = @truncate(color >> 8);
-                self.framebuffer[index + 2] = @truncate(color >> 16);
-                self.framebuffer[index + 3] = @truncate(color >> 24);
+                const idx = (py * @as(usize, WIDTH) + px) * 4;
+                self.framebuffer[idx + 0] = r;
+                self.framebuffer[idx + 1] = g;
+                self.framebuffer[idx + 2] = b;
+                self.framebuffer[idx + 3] = a;
             }
         }
     }
 };
 
-/// Sol Game Engine — Entry Point
-///
-/// Bootstraps the engine subsystems (pocketpy, graphics window, audio) and
-/// runs a minimal smoke test to verify every library is linked and callable.
-// pub fn main(init: std.process.Init) !void {
-//     //const io = init.io;
-//     const arena = init.arena.allocator();
-//     const args = try init.minimal.args.toSlice(arena);
-//     _ = args;
+// ── Utility ──────────────────────────────────────────────────────────────────
+/// Returns true if the button went *down* this frame.
+/// (Handmade Hero's "just pressed" test via half_transition_count.)
+pub fn wasPressed(btn: *const Button, prev: *const Button) bool {
+    return btn.ended_down and !prev.ended_down;
+}
 
-//     // ---- stdout ----
-//     var stdout_buf: [1024]u8 = undefined;
-//     var stdout_fw: Io.File.Writer = .init(.stdout(), init.io, &stdout_buf);
-//     const stdout = &stdout_fw.interface;
-
-//     // ---- banner ----
-//     try stdout.print(
-//         \\
-//         \\╔══════════════════════════════════════╗
-//         \\║   Sol Game Engine v0.1.0-dev         ║
-//         \\║   Powered by Zig + pocketpy          ║
-//         \\╚══════════════════════════════════════╝
-//         \\
-//         \\
-//     , .{});
-
-//     const builtin = @import("builtin");
-//     try stdout.print("[info] Zig version:    {s}\n", .{builtin.zig_version_string});
-//     try stdout.print("[info] Target:         {s}-{s}-{s}\n", .{
-//         @tagName(builtin.target.cpu.arch),
-//         @tagName(builtin.target.os.tag),
-//         @tagName(builtin.target.abi),
-//     });
-//     try stdout.print("[info] Optimize:       {s}\n", .{@tagName(builtin.mode)});
-//     try stdout.print("[info] pocketpy:       {s}\n\n", .{pocketpy.versionString()});
-
-//     // ---- pocketpy smoke test ----
-//     try stdout.print("--- pocketpy smoke test ---\n", .{});
-//     try stdout.flush();
-
-//     pocketpy.initialize();
-//     defer pocketpy.finalize();
-
-//     const py_ok = pocketpy.exec(
-//         \\print("Hello from pocketpy inside Sol Engine! 🐍")
-//     );
-//     if (!py_ok) {
-//         try stdout.print("[warn] Python script failed\n", .{});
-//     }
-//     try stdout.flush();
-
-//     try stdout.print("\n[ ok ] Engine bootstrap complete.\n", .{});
-//     try stdout.flush();
-// }
+/// Returns true if the button went *up* this frame.
+pub fn wasReleased(btn: *const Button, prev: *const Button) bool {
+    return !btn.ended_down and prev.ended_down;
+}

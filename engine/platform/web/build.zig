@@ -1,10 +1,18 @@
 const std = @import("std");
 
-pub fn build(b: *std.Build) !void {
-    const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
+/// Build the Sol Engine web target.
+///
+/// Called from the root `build.zig` when `-Dplatform=web` is selected.
+/// `engine_module` is the Zig module that provides `engine` (engine/core/engine.zig).
+pub fn buildWeb(
+    b: *std.Build,
+    engine_module: *std.Build.Module,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) void {
     const activate_emsdk_step = @import("zemscripten").activateEmsdkStep(b);
 
+    // ── Web platform module (main.zig) ────────────────────────────────────
     const wasm = b.addLibrary(.{
         .name = "sol",
         .linkage = .static,
@@ -12,12 +20,17 @@ pub fn build(b: *std.Build) !void {
             .target = target,
             .optimize = optimize,
             .root_source_file = b.path("main.zig"),
+            .imports = &.{
+                .{ .name = "engine", .module = engine_module },
+            },
         }),
     });
 
+    // zemscripten import
     const zemscripten = b.dependency("zemscripten", .{});
     wasm.root_module.addImport("zemscripten", zemscripten.module("root"));
 
+    // ── Emscripten linker step ────────────────────────────────────────────
     const emcc_flags = @import("zemscripten").emccDefaultFlags(b.allocator, .{
         .optimize = optimize,
         .fsanitize = false,
@@ -28,22 +41,21 @@ pub fn build(b: *std.Build) !void {
         .emsdk_allocator = .emmalloc,
     });
     emcc_settings.put("ALLOW_MEMORY_GROWTH", "1") catch unreachable;
-    emcc_settings.put("FULL_ES2", "1") catch unreachable;
 
     const emcc_step = @import("zemscripten").emccStep(
         b,
-        &.{}, // src file paths
-        &.{wasm}, // src compile steps
+        &.{}, // extra source files
+        &.{wasm},
         .{
             .optimize = optimize,
             .flags = emcc_flags,
             .settings = emcc_settings,
-            .use_preload_plugins = true,
+            .use_preload_plugins = false,
             .embed_paths = &.{},
             .preload_paths = &.{},
             .shell_file_path = b.path("shell.html"),
-            .js_library_path = null,
-            .out_file_name = "sol.html", // or "sol.js"
+            .js_library_path = b.path("canvas.js"),
+            .out_file_name = "sol.html",
             .install_dir = .{ .custom = "web" },
         },
     );
@@ -51,15 +63,12 @@ pub fn build(b: *std.Build) !void {
 
     b.getInstallStep().dependOn(emcc_step);
 
-    const html_filename = try std.fmt.allocPrint(b.allocator, "{s}.html", .{wasm.name});
-
-    const emrun_args = .{};
+    // ── emrun step (for local dev) ────────────────────────────────────────
     const emrun_step = @import("zemscripten").emrunStep(
         b,
-        b.path(b.fmt("zig-out/web/{s}", .{html_filename})),
-        &emrun_args,
+        b.fmt("zig-out/web/sol.html", .{}),
+        &.{},
     );
-
     emrun_step.dependOn(emcc_step);
 
     b.step("emrun", "Build and open the web app locally using emrun").dependOn(emrun_step);
