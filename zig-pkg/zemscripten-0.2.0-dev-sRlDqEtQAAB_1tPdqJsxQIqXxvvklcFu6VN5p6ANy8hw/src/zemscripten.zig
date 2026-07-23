@@ -3,7 +3,8 @@
 const std = @import("std");
 
 comptime {
-    _ = std.testing.refAllDeclsRecursive(@This());
+    // refAllDeclsRecursive requires a newer Zig; skip for 0.16 compatibility.
+    _ = std.testing;
 }
 
 pub extern fn emscripten_sleep(ms: u32) void;
