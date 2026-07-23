@@ -25,7 +25,7 @@ pub const EngineInput = struct {
     // Mouse
     mouse_x: i32 = 0,
     mouse_y: i32 = 0,
-    mouse_buttons: [3]Button = [_]Button{.{}, .{}, .{}},
+    mouse_buttons: [3]Button = [_]Button{ .{}, .{}, .{} },
 
     // Timing (seconds since the last frame)
     dt_for_frame: f32 = 1.0 / 60.0,

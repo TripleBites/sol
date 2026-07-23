@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<body>
+  <canvas id="canvas" width="640" height="480" style="background:#222"></canvas>
+  <script>
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    let keys = {};
+
+    window.addEventListener("keydown", (e) => keys[e.key] = true);
+    window.addEventListener("keyup", (e) => keys[e.key] = false);
+
+    const imports = {
+      env: {
+        clearScreen: () => ctx.clearRect(0, 0, canvas.width, canvas.height),
+        drawRect: (x, y, w, h) => {
+          ctx.fillStyle = "#00ffcc";
+          ctx.fillRect(x, y, w, h);
+        }
+      }
+    };
+
+    WebAssembly.instantiateStreaming(fetch("game.wasm"), imports).then(results => {
+      const wasm = results.instance.exports;
+      let lastTime = performance.now();
+
+      function gameLoop(time) {
+        const dt = (time - lastTime) / 1000;
+        lastTime = time;
+
+        wasm.update(dt, !!keys["ArrowRight"], !!keys["ArrowLeft"]);
+        wasm.render();
+
+        requestAnimationFrame(gameLoop);
+      }
+      requestAnimationFrame(gameLoop);
+    });
+  </script>
+</body>
+</html>
