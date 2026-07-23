@@ -4,18 +4,22 @@
     .fingerprint = 0xf975500a01aa2ee,
     .minimum_zig_version = "0.17.0-dev.1257+67b05e521",
 
-    .dependencies = .{
-        .zaudio = .{
-            .path = "src/core/libs/zaudio",
-        },
-        .zglfw = .{
-            .path = "src/core/libs/zglfw",
-        },
-    },
+    // .dependencies = .{
+    //     .zaudio = .{
+    //         .path = "engine/core/libs/zaudio",
+    //     },
+    //     .zglfw = .{
+    //         .path = "engine/core/libs/zglfw",
+    //     },
+    //     .vulkan = .{
+    //         .url = "git+https://github.com/Snektron/vulkan-zig#057180744c666bb62e20877fe106422784a5e29a",
+    //         .hash = "vulkan-0.0.0-r7Ytx_6DAwDB1QJAbIew5IzR2PiiAtJENX5kdJHf449X",
+    //     },
+    // },
 
     .paths = .{
         "build.zig",
         "build.zig.zon",
-        "src",
+        "engine",
     },
 }

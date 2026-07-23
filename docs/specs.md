@@ -70,8 +70,8 @@ Simple 2D and 3D engine running on vulkan for full crossplatform and web support
 We will focus heavily on 2D at first. But 3D capabilities, must be first class in the future and allow for 2.5D game creation.
 
 ## Staring Goal
-1) Get zig-gamedev and pocketpy building and callable in src/core/main.zig using our build.zig files.
-2) Write test cases in src/core/main.zig that verify that all of our libraries are loading and building correctly.
+1) Get zig-gamedev and pocketpy building and callable in engine/core/main.zig using our build.zig files.
+2) Write test cases in engine/core/main.zig that verify that all of our libraries are loading and building correctly.
 3) Commit changes locally using git.
 4) Get our main.py running a basic hello world print statement in game/code/game.py.
 3) Commit changes locally using git.
@@ -79,7 +79,7 @@ We will focus heavily on 2D at first. But 3D capabilities, must be first class i
 3) Commit changes locally using git.
 8) Add engine tracing using ztracy.
 3) Commit changes locally using git.
-10) Open an zsdl SDL3 window in src/core/main.zig. Must use SDL3 and not SDl2.
+10) Open an zsdl SDL3 window in engine/core/main.zig. Must use SDL3 and not SDl2.
 11) Render a simple color gradient triangle to the window using zgpu.
 
 ## AI Agent Usage
