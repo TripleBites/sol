@@ -1,5 +1,5 @@
 # Sol Game Engine
-Zig based game engine that leverages Micropython as the developers scripting language.
+Zig based game engine that leverages pocketpy as the developers scripting language.
 
 # Setup Instructions
 
