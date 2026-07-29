@@ -9,7 +9,7 @@ IS_ANDROID = "ANDROID_ARGUMENT" in os.environ or "aarch64-linux-android" in os.e
 
 # Base configuration
 libraries = ["SDL3"]
-include_dirs = ["src"]
+include_dirs = ["src/engine"]
 library_dirs = []
 extra_compile_args = ["-std=c99", "-O3"]
 
@@ -27,7 +27,12 @@ else:
 
 sol_module = Extension(
     "sol",
-    sources=["src/sol.c"],
+    sources=[
+        "src/engine/engine.c",
+        "src/engine/platform/platform_cli.c",
+        "src/engine/platform/platform_sdl3.c",
+        "src/engine/ui/ui.c",
+        ],
     include_dirs=include_dirs,
     library_dirs=library_dirs,
     libraries=libraries,
