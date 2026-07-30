@@ -1,18 +1,19 @@
-#ifndef SOL_H
-#define SOL_H
+#ifndef SOL_ENGINE_H
+#define SOL_ENGINE_H
+
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/* Initialize SDL3 subsystems. Returns 0 on success, -1 on error. */
 bool sol_init(const char* title, int width, int height);
-
-/* Shutdown SDL3. */
+bool sol_update(void);        /* pump events + render; returns false if should close */
 void sol_shutdown(void);
+void sol_get_size(int* width, int* height);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* SOL_H */
+#endif /* SOL_ENGINE_H */

@@ -1,26 +1,31 @@
-import time
-import numpy as np
-import pandas as pd
-import sol  # Our compiled C extension
+"""Sol Engine - Hello Triangle"""
+import sol
+
 
 def main():
-    print("Initializing Python Application...")
-    
-    # Simple Pandas / NumPy sanity test
-    df = pd.DataFrame({"x": np.arange(5), "y": np.arange(5) ** 2})
-    print("NumPy/Pandas Test Matrix:\n", df)
+    print("Initializing Sol Engine (SDL3 + Vulkan)...")
 
-    # Initialize C Engine powered by SDL3
-    print("Launching C99 SDL3 Sol Engine...")
-    sol.init("C99 Sol SDL3 Engine", 800, 600)
+    if not sol.init("Sol Engine - Hello Triangle", 400, 400):
+        print("ERROR: Failed to initialize engine")
+        return 1
 
-    # Simple frame loop (running 100 frames for demonstration)
-    for _ in range(100):
-        sol.update()
-        time.sleep(0.016)  # ~60 FPS
+    w, h = sol.get_size()
+    print(f"Framebuffer: {w}x{h}")
+
+    print("Running... close the window to exit.")
+    running = True
+    frame = 0
+    while running:
+        running = sol.update()
+        frame += 1
+        if frame % 100 == 0:
+            w, h = sol.get_size()
+            print(f"Frame {frame} - {w}x{h}")
 
     sol.shutdown()
     print("Sol Engine closed cleanly.")
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    exit(main())

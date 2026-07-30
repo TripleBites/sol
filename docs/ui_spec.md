@@ -3,9 +3,26 @@
 
 **Version:** 1.0-draft  
 **Date:** 2026-07-28  
-**Status:** Design Specification  
+**Status:** Prototype implemented at `src/engine/ui/`  
 **Language:** C99 (ISO/IEC 9899:1999)  
-**Target Wrapper:** Python (via Cython)  
+**Target Wrapper:** Python (via ctypes)  
+
+> **Implementation status (2026-07-30):** Core components prototyped and functional.
+> See `examples/ui_example.py` for a Python demo. Implemented:
+> - Node (vtable, refcounting, tree ops)
+> - Control (rect, anchors, offsets, size_flags)
+> - DrawList (filled rect, border, text, clip push/pop)
+> - SceneTree (process → two-pass layout → draw)
+> - ColorRect widget
+> - VBoxContainer (SIZE_FILL, SIZE_EXPAND, SIZE_SHRINK_*, separation)
+>
+> Not yet implemented:
+> - HBoxContainer, MarginContainer, CenterContainer
+> - Button, Label, LineEdit, TextureRect
+> - Signal system
+> - Theme / StyleBox
+> - Input events
+> - Font rendering (stb_truetype)
 
 ---
 

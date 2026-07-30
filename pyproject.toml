@@ -1,11 +1,13 @@
 [project]
 name = "sol"
 version = "0.1.0"
-dependencies = [
-    "numpy",
-    "pandas",
-]
+description = "Sol Engine - C99 SDL3 + Vulkan game engine with Python bindings"
+requires-python = ">=3.10"
 
 [build-system]
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["sol"]
+package-dir = { "sol" = "src/sol" }

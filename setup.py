@@ -1,46 +1,29 @@
-import os
+"""Build the Sol engine shared library and install the Python package."""
+import subprocess
 import sys
-from setuptools import Extension, setup
+from pathlib import Path
 
-# Platform detection
-IS_WINDOWS = sys.platform == "win32"
-# Buildozer sets ANDROID_ARGUMENT or CC containing android cross-compilers
-IS_ANDROID = "ANDROID_ARGUMENT" in os.environ or "aarch64-linux-android" in os.environ.get("CC", "")
+from setuptools import setup
+from setuptools.command.build_ext import build_ext as _build_ext
 
-# Base configuration
-libraries = ["SDL3"]
-include_dirs = ["src/engine"]
-library_dirs = []
-extra_compile_args = ["-std=c99", "-O3"]
 
-# Platform-specific Vulkan linking
-if IS_WINDOWS:
-    # On Windows, locate the LunarG Vulkan SDK via environment variable
-    vulkan_sdk = os.environ.get("VULKAN_SDK")
-    if vulkan_sdk:
-        include_dirs.append(os.path.join(vulkan_sdk, "Include"))
-        library_dirs.append(os.path.join(vulkan_sdk, "Lib"))
-    libraries.append("vulkan-1")  # Links vulkan-1.lib
-else:
-    # Linux & Android NDK both expose standard -lvulkan
-    libraries.append("vulkan")
+ROOT = Path(__file__).resolve().parent
 
-sol_module = Extension(
-    "sol",
-    sources=[
-        "src/engine/engine.c",
-        "src/engine/platform/platform_cli.c",
-        "src/engine/platform/platform_sdl3.c",
-        "src/engine/ui/ui.c",
-        ],
-    include_dirs=include_dirs,
-    library_dirs=library_dirs,
-    libraries=libraries,
-    extra_compile_args=extra_compile_args,
-)
+
+class BuildEngine(_build_ext):
+    """Custom build_ext that compiles the C99 engine as a shared library."""
+    def run(self):
+        build_script = ROOT / "scripts" / "build_engine.py"
+        subprocess.run([sys.executable, str(build_script)], check=True)
+        # Don't call super().run() - we handle C building ourselves
+
 
 setup(
     name="sol",
-    version="0.1",
-    ext_modules=[sol_module],
+    version="0.1.0",
+    description="Sol Engine - C99 SDL3 + Vulkan game engine with Python bindings",
+    packages=["sol"],
+    package_dir={"sol": "src/sol"},
+    package_data={"sol": ["libsol.so", "libsol.dylib", "sol.dll"]},
+    cmdclass={"build_ext": BuildEngine},
 )

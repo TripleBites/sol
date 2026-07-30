@@ -1,33 +1,37 @@
+"""ctypes bindings to the Sol C99 engine library."""
 import ctypes
 import os
-import platform
-import sys
+import platform as _platform
+
 
 def _find_library():
-    """Locate libsol.so across Linux, Android, macOS."""
-    name = "libsol.so"
-    if platform.system() == "Darwin":
+    """Locate the sol shared library."""
+    system = _platform.system()
+    if system == "Linux":
+        name = "libsol.so"
+    elif system == "Darwin":
         name = "libsol.dylib"
-    elif platform.system() == "Windows":
+    elif system == "Windows":
         name = "sol.dll"
+    else:
+        name = "libsol.so"
 
-    # 1. Same directory as this file
+    # Search paths
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    candidates = [os.path.join(script_dir, name)]
-
-    # 2. Adjacent to Sol/ source (dev layout)
-    candidates.append(os.path.join(script_dir, "..", "..", "sol", name))
-
-    # 3. Android: libs are in the app lib path, often already in LD path
-    #    On Android, plain CDLL("libsol.so") often works if bundled.
+    candidates = [
+        os.path.join(script_dir, name),                         # alongside bindings.py
+        os.path.join(script_dir, "..", "..", "build", name),    # setuptools build dir
+        os.path.join(script_dir, "..", "engine", name),         # dev: src/sol -> src/engine
+    ]
 
     for path in candidates:
         if os.path.exists(path):
             return path
-    return name  # Let system loader resolve it
+    return name  # fall back to system loader
 
 
 _lib = None
+
 
 def _load():
     global _lib
@@ -37,20 +41,43 @@ def _load():
     path = _find_library()
     _lib = ctypes.CDLL(path)
 
-    # --- Bind functions -------------------------------------------------
-    _lib.sol_init.restype = ctypes.c_bool 
+    # sol_init
+    _lib.sol_init.restype = ctypes.c_bool
     _lib.sol_init.argtypes = [ctypes.c_char_p, ctypes.c_int, ctypes.c_int]
 
+    # sol_update (returns false when window should close)
+    _lib.sol_update.restype = ctypes.c_bool
+    _lib.sol_update.argtypes = []
+
+    # sol_shutdown
     _lib.sol_shutdown.restype = None
     _lib.sol_shutdown.argtypes = []
+
+    # sol_get_size
+    _lib.sol_get_size.restype = None
+    _lib.sol_get_size.argtypes = [ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int)]
 
     return _lib
 
 
-def init():
-    if _load().sol_init() != 0:
-        raise RuntimeError("sol_init failed")
+def init(title: str = "Sol Engine", width: int = 800, height: int = 600) -> bool:
+    """Initialize the engine. Returns True on success."""
+    return _load().sol_init(title.encode("utf-8"), width, height)
 
 
-def shutdown():
+def update() -> bool:
+    """Pump events and render a frame. Returns False if the window should close."""
+    return _load().sol_update()
+
+
+def shutdown() -> None:
+    """Shut down the engine and clean up resources."""
     _load().sol_shutdown()
+
+
+def get_size() -> tuple[int, int]:
+    """Get the current framebuffer size in pixels."""
+    w = ctypes.c_int()
+    h = ctypes.c_int()
+    _load().sol_get_size(ctypes.byref(w), ctypes.byref(h))
+    return (w.value, h.value)
