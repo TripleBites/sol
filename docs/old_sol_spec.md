@@ -20,10 +20,10 @@
 │  libsol.so  (C99 shared library)             │
 │                                              │
 │  ┌─ engine.c         dispatch               │
-│  ├─ platform/                               │
-│  │  ├─ platform_sdl3.c    SDL window/input  │
-│  │  ├─ platform_vulkan.c  Vulkan renderer   │
-│  │  └─ platform_headless.c                  │
+│  ├─ io/                               │
+│  │  ├─ io_sdl3.c    SDL window/input  │
+│  │  ├─ io_vulkan.c  Vulkan renderer   │
+│  │  └─ io_headless.c                  │
 │  └─ ui/                 UI system           │
 │     ├─ node.c            base object        │
 │     ├─ control.c         layout             │
@@ -45,7 +45,7 @@ void sol_shutdown(void);
 void sol_get_size(int* w, int* h);
 ```
 
-### 2.2 Platform Abstraction (`platform/platform.h`)
+### 2.2 Platform Abstraction (`io/io.h`)
 
 Each platform backend implements the `SolPlatform` struct:
 
@@ -58,9 +58,9 @@ typedef struct SolPlatform {
 } SolPlatform;
 ```
 
-Registered via `sol_platform_sdl3()` / `sol_platform_headless()`.
+Registered via `sol_io_sdl3()` / `sol_io_headless()`.
 
-### 2.3 Vulkan Renderer (`platform/platform_vulkan.h`)
+### 2.3 Vulkan Renderer (`io/io_vulkan.h`)
 
 The Vulkan backend is a standalone module that the SDL3 platform hands off to after creating the instance, surface, and device:
 
@@ -72,9 +72,9 @@ void sol_vulkan_signal_resize(SolVulkan* vk);
 void sol_vulkan_shutdown(SolVulkan* vk);
 ```
 
-This separation allows swapping in alternative renderers (OpenGL, Metal) behind the same platform.
+This separation allows swapping in alternative renderers (OpenGL, Metal) behind the same io.
 
-### 2.4 SDL3 Platform (`platform/platform_sdl3.c`)
+### 2.4 SDL3 Platform (`io/io_sdl3.c`)
 
 Responsibilities:
 - SDL window creation with `SDL_WINDOW_VULKAN`

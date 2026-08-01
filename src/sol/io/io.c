@@ -1,4 +1,4 @@
-#include "platform.h"
+#include "io.h"
 #include <stdio.h>
 
 static int g_width = 800, g_height = 600;
@@ -35,6 +35,6 @@ static SolPlatform headless_platform = {
     .get_size = headless_get_size,
 };
 
-const SolPlatform* sol_platform_headless(void) {
+const SolPlatform* sol_io_headless(void) {
     return &headless_platform;
 }

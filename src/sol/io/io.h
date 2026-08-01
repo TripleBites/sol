@@ -1,5 +1,5 @@
-#ifndef SOL_PLATFORM_H
-#define SOL_PLATFORM_H
+#ifndef SOL_IO_H
+#define SOL_IO_H
 
 #include <stdbool.h>
 
@@ -10,7 +10,7 @@ typedef struct SolPlatform {
     void (*get_size)(int* w, int* h);
 } SolPlatform;
 
-const SolPlatform* sol_platform_sdl3(void);
-const SolPlatform* sol_platform_headless(void);
+const SolPlatform* sol_io_sdl3(void);
+const SolPlatform* sol_io_headless(void);
 
-#endif /* SOL_PLATFORM_H */
+#endif /* SOL_IO_H */

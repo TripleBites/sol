@@ -74,9 +74,9 @@ def build_engine():
 
     sources = [
         ENGINE_SRC / "engine.c",
-        ENGINE_SRC / "platform" / "platform_sdl3.c",
-        ENGINE_SRC / "platform" / "platform_vulkan.c",
-        ENGINE_SRC / "platform" / "platform_headless.c",
+        ENGINE_SRC / "platform" / "io_sdl3.c",
+        ENGINE_SRC / "platform" / "io_vulkan.c",
+        ENGINE_SRC / "platform" / "io_headless.c",
         ENGINE_SRC / "ui" / "node.c",
         ENGINE_SRC / "ui" / "control.c",
         ENGINE_SRC / "ui" / "draw_list.c",

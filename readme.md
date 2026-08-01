@@ -18,10 +18,10 @@ src/sol/              ← Python package (ctypes bindings)
 libsol.so             ← compiled C99 shared library
     │
     ├── engine.c               ← core dispatch (init → platform)
-    ├── platform/
-    │   ├── platform_sdl3.c    ← SDL3 window + Vulkan bootstrap
-    │   ├── platform_vulkan.c  ← pure Vulkan renderer (swapchain, pipeline, draw)
-    │   └── platform_headless.c← no-op backend
+    ├── io/
+    │   ├── io_sdl3.c    ← SDL3 window + Vulkan bootstrap
+    │   ├── io_vulkan.c  ← pure Vulkan renderer (swapchain, pipeline, draw)
+    │   └── io_headless.c← no-op backend
     └── ui/                    ← Godot-inspired retained-mode UI
         ├── node.c             ← base object (vtable, refcount, tree ops)
         ├── control.c          ← rect, anchors, layout
@@ -100,7 +100,7 @@ sol/
 ├── src/
 │   ├── engine/                ← C99 engine
 │   │   ├── engine.h/c         ← public API
-│   │   ├── platform/          ← platform backends
+│   │   ├── io/          ← platform backends
 │   │   ├── ui/                ← UI system
 │   │   └── shaders/           ← SPIR-V assembly sources
 │   └── sol/                   ← Python package

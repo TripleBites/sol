@@ -1,5 +1,5 @@
-#ifndef SOL_PLATFORM_VULKAN_H
-#define SOL_PLATFORM_VULKAN_H
+#ifndef SOL_IO_VULKAN_H
+#define SOL_IO_VULKAN_H
 
 #include <vulkan/vulkan.h>
 #include <stdbool.h>
@@ -106,4 +106,4 @@ bool sol_vulkan_ui_setup(SolVulkan* vk);
    inside a render pass. */
 void sol_vulkan_ui_draw(SolVulkan* vk, VkCommandBuffer cmd, const struct DrawList* dl);
 
-#endif /* SOL_PLATFORM_VULKAN_H */
+#endif /* SOL_IO_VULKAN_H */

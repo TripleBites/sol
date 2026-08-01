@@ -1,11 +1,12 @@
 #include <stddef.h>
-#include "engine.h"
-#include "platform/platform.h"
+#include "core.h"
+
+#include "io/io.h"
 
 static const SolPlatform* platform = NULL;
 
 bool sol_init(const char* title, int width, int height) {
-    platform = sol_platform_sdl3();
+    platform = sol_io_sdl3();
     if (!platform) return false;
     return platform->init(title, width, height);
 }

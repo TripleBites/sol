@@ -33,9 +33,9 @@ gcc -std=c99 -O3 -fPIC -shared \
     -I src/engine \
     $(pkg-config --cflags --libs sdl3) \
     src/engine/engine.c \
-    src/engine/platform/platform_sdl3.c \
-    src/engine/platform/platform_vulkan.c \
-    src/engine/platform/platform_headless.c \
+    src/engine/io/io_sdl3.c \
+    src/engine/io/io_vulkan.c \
+    src/engine/io/io_headless.c \
     src/engine/ui/node.c \
     src/engine/ui/control.c \
     src/engine/ui/draw_list.c \
@@ -55,10 +55,10 @@ The script checks file modification times. If `libsol.so` is newer than all sour
 | Component | Files |
 |-----------|-------|
 | Engine core | `engine.h`, `engine.c` |
-| Platform abstraction | `platform/platform.h` |
-| SDL3 backend | `platform/platform_sdl3.c` |
-| Vulkan renderer | `platform/platform_vulkan.h`, `platform/platform_vulkan.c` |
-| Headless backend | `platform/platform_headless.c` |
+| Platform abstraction | `io/io.h` |
+| SDL3 backend | `io/io_sdl3.c` |
+| Vulkan renderer | `io/io_vulkan.h`, `io/io_vulkan.c` |
+| Headless backend | `io/io_headless.c` |
 | Shaders | `shaders/vertex.vert`, `shaders/fragment.frag` → `shaders.h` (generated) |
 | Node system | `ui/node.h`, `ui/node.c` |
 | Control | `ui/control.h`, `ui/control.c` |

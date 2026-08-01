@@ -6,7 +6,7 @@ import platform as _platform
 
 def _find_library():
     """Locate the sol shared library."""
-    system = _platform.system()
+    system = _io.system()
     if system == "Linux":
         name = "libsol.so"
     elif system == "Darwin":

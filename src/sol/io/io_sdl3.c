@@ -1,5 +1,5 @@
-#include "platform.h"
-#include "platform_vulkan.h"
+#include "io.h"
+#include "io_vulkan.h"
 #include "../ui/scene_tree.h"
 #include "../ui/control.h"
 #include "../ui/color_rect.h"
@@ -256,6 +256,6 @@ static SolPlatform sdl3_platform = {
     .get_size = sdl3_get_size,
 };
 
-const SolPlatform* sol_platform_sdl3(void) {
+const SolPlatform* sol_io_sdl3(void) {
     return &sdl3_platform;
 }

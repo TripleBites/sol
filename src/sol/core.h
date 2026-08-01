@@ -1,5 +1,5 @@
-#ifndef SOL_ENGINE_H
-#define SOL_ENGINE_H
+#ifndef SOL_CORE_H
+#define SOL_CORE_H
 
 #include <stdbool.h>
 
@@ -16,4 +16,4 @@ void sol_get_size(int* width, int* height);
 }
 #endif
 
-#endif /* SOL_ENGINE_H */
+#endif /* SOL_CORE_H */
