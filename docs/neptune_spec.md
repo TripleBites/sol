@@ -1,394 +1,230 @@
-# Modular Python Synthesizer — Project Specification
+# Neptune Audio Synthesizer — Specification v2.0
+## Python Composition Layer over Sol Audio Engine
 
-## 0. Purpose of this document
-
-This is a spec to hand to a coding agent (or to build from yourself) to bootstrap
-v1 of the project. It intentionally specifies **less code than it could** — the
-goal is a small, readable core that a Python learner (comfortable in Unity C#)
-can read top-to-bottom in an afternoon, then extend. Every extension point is
-called out explicitly so growth has an obvious place to go, rather than
-requiring a rewrite.
-
-Optimize for: readability > cleverness, explicit > implicit, small interfaces >
-big frameworks. Resist the urge to add abstraction the spec doesn't ask for —
-the "modular" parts are modular on purpose; everything else should stay as
-plain and flat as possible.
+> **Neptune is a thin Python composition layer.** It creates `AudioNode` trees from the Sol C99 engine, routes input (keyboard, MIDI) to `AudioPipeline` control messages, reads probe ring buffers for GUI waveform display, and serializes/deserializes patches. The hot audio path is C. The logic and composition is Python.
 
 ---
 
-## 1. Background / prior art this builds on
+## 0. Relationship to Sol Engine
 
-This project extends the pattern from the "Making a Synth With Python" article
-series (Oscillators → Modulators → Controllers):
+Neptune does NOT implement oscillators, mixers, envelopes, or real-time audio I/O. Those live in `src/sol/audio/` and `src/sol/io/` as C99 code.
 
-- **Oscillators are iterators.** Each oscillator implements `__iter__` /
-  `__next__`. `__iter__` resets/starts the note (called once on key-down);
-  `__next__` produces the next sample (called repeatedly while the key is
-  held). Oscillators track a fundamental value (e.g. `_freq`, set at
-  instantiation / note-on) separately from a live value (e.g. `_f`) that
-  modulation can move without losing the original.
-- **Modulators wrap oscillator parameters.** A modulator (e.g. an ADSR
-  envelope, an LFO) feeds a value each tick; a small modifier function
-  combines the modulator's output with the oscillator's base parameter to
-  produce the new live value.
-- **A controller/synth layer reads note events (MIDI or keyboard) and drives
-  oscillators + modulators together**, mixing multiple simultaneous voices
-  (polyphony).
-
-We are keeping this mental model (it's good — it's basically an ECS-flavored
-signal graph) but reorganizing it into **explicit modular stages** with a
-defined interface between each, so new stages can be dropped in without
-touching existing code, and so the signal at any stage can be probed for
-visualization.
-
----
-
-## 2. High-level architecture
+Neptune DOES:
+- Instantiate and wire together `AudioNode` subclasses into an `AudioPipeline`
+- Translate QWERTY keystrokes / MIDI messages into `NoteOn`/`NoteOff` control queue messages
+- Poll `AudioPipeline` probe ring buffers and render waveforms via Sol's `DrawList`
+- Build a synth GUI panel using Sol's `Control` widgets
+- Serialize/deserialize `AudioNode` trees to/from `.solpatch` JSON files
 
 ```
- ┌──────────────┐      ┌────────────────┐      ┌───────────────┐      ┌──────────┐
- │  Input Layer  │ ---> │  Voice Layer   │ ---> │  Mix / FX      │ ---> │  Output   │
- │ (MIDI / kbd)  │      │ (osc + mod per │      │  Pipeline      │      │ (speaker  │
- │               │      │  active note)  │      │ (chain of      │      │  via      │
- │               │      │                │      │  Nodes)        │      │ sounddevice)│
- └──────────────┘      └────────────────┘      └───────────────┘      └──────────┘
-        |                                              |
-        |                                              | (probe taps, optional)
-        v                                              v
- ┌────────────────────────────────────────────────────────────────────────────┐
- │                     Engine / Control thread (GUI, optional)                 │
- │        reads probe data + pipeline structure, writes control messages       │
- └────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│  Neptune (Python, ~500 lines)                           │
+│                                                          │
+│  main.py ─── creates AudioPipeline, wires AudioNodes    │
+│  gui/     ─── Sol Control tree for synth panel          │
+│  input/   ─── keyboard.py, midi.py → control queue      │
+│  patch.py ─── JSON save/load of AudioNode tree          │
+├──────────────────────────────────────────────────────────┤
+│  Sol Engine (C99, libsol.so)                            │
+│                                                          │
+│  audio/   ─── AudioNode, OscillatorNode, VoiceNode,     │
+│              EnvelopeNode, MixerNode, GainNode,          │
+│              AudioPipeline (control queue, probes)       │
+│  io/      ─── SDL3 audio callback, ALSA audio callback  │
+│  scene/   ─── Control, DrawList (for GUI rendering)     │
+└──────────────────────────────────────────────────────────┘
 ```
-
-Two runtime modes, same core:
-- **Headless mode**: Input Layer → Voice Layer → Mix/FX Pipeline → Output.
-  No GUI, no engine thread. This is what she plays through on the Pi.
-- **GUI mode**: same audio path running on its own thread, *plus* your Godot-
-  like engine's thread running a UI that visualizes the pipeline and lets her
-  hot-swap/probe it live.
-
-The audio path never depends on the GUI being present. The GUI is a consumer
-that attaches to a stable interface (Section 6) — this is the seam that keeps
-"headless" and "GUI" the same underlying app instead of two apps.
 
 ---
 
-## 3. Threading & real-time constraints (read this before writing any code)
+## 1. Project Layout
 
-This is the one part of the system where getting the boundary wrong causes
-audible glitches, so the coding agent should treat this section as load-
-bearing, not stylistic.
-
-- **The audio callback (`sounddevice` calls this many times per second, e.g.
-  every ~11ms at a 512-sample buffer / 44.1kHz) runs on a thread PortAudio
-  owns, not your engine's thread.** This is not a design choice — it's how
-  real-time audio works on every io.
-- **The audio callback must never:** allocate significant memory, take a lock
-  that the GUI/engine thread might hold for a while, do file or network I/O,
-  or call into arbitrary Python objects it doesn't already own. Missing a
-  deadline = an audible click/dropout.
-- **The engine/GUI thread must never block on the audio thread.** It reads
-  state the audio thread published, and it *requests* changes — it does not
-  reach into the audio thread's objects and mutate them directly.
-- **The only two crossings allowed between the threads:**
-  1. **Control queue** (GUI/input → audio): a `queue.Queue` (or
-     `collections.deque` with `maxlen`) of small immutable messages — "note
-     on", "note off", "set param X to Y", "swap node at slot N". The audio
-     callback drains it (non-blocking `get_nowait()` in a loop) at the top of
-     each callback, before rendering.
-  2. **Probe ring buffer** (audio → GUI): a fixed-size numpy ring buffer per
-     probe point. Audio thread writes; GUI thread reads. Single-writer /
-     single-reader on a preallocated fixed-size array needs no lock if
-     writes are index-based (write pointer only ever advanced by the audio
-     thread) — use `numpy` array + plain int index, not a `Queue`, since the
-     GUI only needs "the last N samples," not delivery of every sample.
-- **Hot-swapping a pipeline node must be crash-safe under this model too**:
-  the audio thread should only ever see a fully-constructed replacement node
-  (swap a reference atomically, e.g. replace an entry in a list the audio
-  thread reads by index — Python list `__setitem__` is atomic under the GIL)
-  — never partially-constructed state.
-
-This whole boundary should live in **one small file** (`src/rtsafe.py` or
-similar) with the control-queue and probe-ring-buffer implementations and
-nothing else, so it's the one place to look to understand "how the two
-threads talk," and it's short enough to actually read.
+```
+neptune/
+├── __init__.py
+├── main.py                   # entry point: --headless / --midi / --gui
+├── gui/
+│   ├── __init__.py
+│   └── synth_panel.py        # Sol Control tree consuming probe data
+├── input/
+│   ├── __init__.py
+│   ├── keyboard.py           # ComputerKeyboardInput → NoteOn/NoteOff
+│   └── midi.py               # MidiInput → NoteOn/NoteOff
+├── patch.py                  # save_patch / load_patch (JSON)
+└── examples/
+    └── extending/
+        ├── my_first_voice.py     # copy-paste-and-modify starter
+        └── my_first_effect.py    # same, for AudioNode extensions
+```
 
 ---
 
-## 4. Project layout
-
-```
-synth/
-├── pyproject.toml              # uv-managed
-├── README.md                   # points here + quickstart
-├── SYNTH_SPEC.md                # this file
-├── src/
-│   └── synth/
-│       ├── __init__.py
-│       ├── main.py             # entrypoint: --headless / --gui flag
-│       ├── rtsafe.py           # control queue + probe ring buffer (Section 3)
-│       ├── oscillators/
-│       │   ├── __init__.py
-│       │   ├── base.py         # Oscillator ABC (iterator protocol)
-│       │   ├── sine.py
-│       │   ├── square.py
-│       │   └── saw.py
-│       ├── modulators/
-│       │   ├── __init__.py
-│       │   ├── base.py         # Modulator ABC
-│       │   └── adsr.py         # simple ADSR envelope
-│       ├── voices/
-│       │   ├── __init__.py
-│       │   └── voice.py        # one active note = osc(s) + modulator(s)
-│       ├── pipeline/
-│       │   ├── __init__.py
-│       │   ├── node.py         # Node ABC — the "modular pipeline stage" interface
-│       │   ├── graph.py        # ordered list of Nodes + hot-swap + probes
-│       │   └── nodes/
-│       │       ├── mixer.py    # sums active voices into one buffer
-│       │       └── gain.py     # trivial example transformer node
-│       ├── input/
-│       │   ├── __init__.py
-│       │   ├── base.py         # InputSource ABC: yields NoteOn/NoteOff events
-│       │   ├── computer_keyboard.py
-│       │   └── midi.py
-│       ├── io/
-│       │   ├── __init__.py
-│       │   └── audio_out.py    # sounddevice stream setup + the callback
-│       ├── persistence/
-│       │   ├── __init__.py
-│       │   └── patch.py        # save/load pipeline+settings as a file (Section 8)
-│       └── gui/
-│           ├── __init__.py
-│           └── app.py          # generic GUI interface (Section 9) — engine-agnostic
-├── examples/
-│   └── extending/
-│       ├── my_first_oscillator.py   # copy-paste-and-modify starter
-│       └── my_first_node.py         # same, for pipeline nodes
-└── tests/
-    ├── test_oscillators.py
-    ├── test_pipeline.py
-    └── test_rtsafe.py
-```
-
-Rationale for the flat, plural-folder-per-concept layout: it mirrors your
-`Grimoire`-style modular workspace habits, but flattened for a Python
-beginner — one obvious folder per kind of extensible thing, and each folder's
-`base.py` is the contract new modules must satisfy.
-
----
-
-## 5. Core interfaces (the contracts extensions implement)
-
-Keep these as small as possible. Each is an `abc.ABC` with 1–3 required
-methods, documented with a docstring showing a minimal example implementation
-directly in the ABC's docstring (so she can read the interface and see how to
-satisfy it in the same place).
-
-### 5.1 `Oscillator` (src/synth/oscillators/base.py)
-- Iterator protocol: `__iter__(self)` (called on note-on, resets phase),
-  `__next__(self)` (returns one `float` sample in `[-1.0, 1.0]`).
-- Constructor takes `freq: float`, `sample_rate: int`.
-- Properties: `freq` (fundamental, immutable post-construction) vs an
-  internal live frequency modulators can move.
-
-### 5.2 `Modulator` (src/synth/modulators/base.py)
-- `__iter__(self)`, `__next__(self) -> float`: yields the next modulation
-  value (e.g. envelope amplitude 0.0–1.0).
-- A modulator does not know what it's modulating — that composition happens
-  in `Voice` or via a small `apply(base_value, mod_value) -> float` function
-  passed in, per the original tutorial's `[param]_mod` pattern.
-
-### 5.3 `Node` (src/synth/pipeline/node.py) — **the key modular extension point**
-This is what "add new sound mixers and transformers over time" hooks into.
-```python
-class Node(ABC):
-    """
-    One stage in the audio pipeline. Given a numpy buffer of input samples
-    (shape: (n_frames,) mono for v1), produce a buffer of output samples of
-    the same shape. Must be safe to call from the audio thread: no
-    allocation-heavy work, no locks, no I/O.
-    """
-    name: str  # for GUI display / probing labels
-
-    @abstractmethod
-    def process(self, buffer: np.ndarray) -> np.ndarray: ...
-
-    def get_params(self) -> dict: ...       # for GUI to introspect/display
-    def set_param(self, name, value): ...   # called via control queue only
-```
-A `Graph` (`pipeline/graph.py`) holds an ordered list of `Node`s, runs them in
-sequence each callback, and exposes:
-- `probe(node_index)` — registers a ring-buffer tap after that node's output
-  (Section 3), used by the GUI.
-- `swap_node(index, new_node)` — hot-swap, via the control queue, never
-  direct mutation from another thread.
-- `insert_node`, `remove_node` — same swap-safety rules.
-
-This gives her a single, small, well-documented base class to inherit from
-for *any* new pipeline stage — a new mixer, a filter, a distortion effect,
-whatever — without needing to understand oscillators or MIDI at all.
-
-### 5.4 `InputSource` (src/synth/input/base.py)
-- Something that yields `NoteOn(pitch, velocity)` / `NoteOff(pitch)` events
-  (simple dataclasses) — either by polling or via a background thread that
-  pushes into the control queue.
-- Two v1 implementations:
-  - `ComputerKeyboardInput` — maps a few QWERTY keys to notes (piano-style
-    row), zero extra hardware needed to test with.
-  - `MidiInput` — wraps a MIDI library (Section 7) and translates MIDI
-    note-on/off/velocity into the same `NoteOn`/`NoteOff` events, so
-    everything downstream is input-source-agnostic.
-
----
-
-## 6. The audio thread ↔ GUI interface (the seam your engine plugs into)
-
-Since the GUI itself is out of scope for the coding agent right now (you're
-wiring your own engine's UI system in afterward), the spec defines a small,
-concrete, **engine-agnostic** data interface. Whatever UI toolkit consumes
-this only needs to know this interface — nothing about `sounddevice`,
-oscillators, or threading:
+## 2. Entry Point (`main.py`)
 
 ```python
-class SynthHandle:
-    """
-    The one object a GUI needs. Constructed once; safe to poll from any
-    thread that isn't the audio callback itself.
-    """
-    def get_pipeline_description(self) -> list[NodeInfo]: ...
-        # name, type, current params, per node — for drawing the pipeline
+"""Neptune — Audio Synthesizer powered by Sol Engine."""
+import argparse
+from sol.audio_bindings import AudioPipeline, MixerNode, VoiceNode, OscillatorNode, EnvelopeNode, GainNode
 
-    def get_probe_data(self, node_index: int, n_samples: int) -> np.ndarray:
-        # last N samples at that probe point, for waveform drawing
+def build_default_patch(pipeline: AudioPipeline) -> None:
+    mixer = MixerNode(name="main")
+    gain = GainNode(level=0.8, name="output")
 
-    def send_control(self, message: ControlMessage) -> None:
-        # enqueue a set-param / swap-node / note-on-off request
+    voice = VoiceNode(note=60, velocity=0.8, name="lead")
+    voice.set_oscillator(OscillatorNode.sine(freq=261.6))
+    voice.set_envelope(EnvelopeNode.adsr(attack=0.01, decay=0.15, sustain=0.7, release=0.3))
 
-    def list_probe_points(self) -> list[str]: ...
+    mixer.add_child(voice)
+    mixer.add_child(gain)
+    pipeline.set_root(mixer)
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--headless", action="store_true")
+    parser.add_argument("--midi", action="store_true")
+    parser.add_argument("--gui", action="store_true")
+    parser.add_argument("--patch", type=str, help=".solpatch file to load")
+    args = parser.parse_args()
+
+    pipeline = AudioPipeline(sample_rate=44100, buffer_size=512)
+
+    if args.patch:
+        from neptune.patch import load_patch
+        load_patch(pipeline, args.patch)
+    else:
+        build_default_patch(pipeline)
+
+    pipeline.start()
+
+    if args.gui:
+        from neptune.gui.synth_panel import SynthPanel
+        panel = SynthPanel(pipeline)
+        panel.show()
+    else:
+        # Headless — keyboard input
+        from neptune.input.keyboard import ComputerKeyboardInput
+        kbd = ComputerKeyboardInput()
+        kbd.on_note_on = pipeline.send_note_on
+        kbd.on_note_off = pipeline.send_note_off
+
+        try:
+            while True:
+                kbd.poll()
+        except KeyboardInterrupt:
+            pass
+
+    pipeline.stop()
 ```
 
-Your engine's UI code then just needs to: call `get_pipeline_description()`
-to draw boxes for each node, call `get_probe_data()` on a timer to draw a
-waveform, and call `send_control()` on button/knob interaction. This keeps
-your engine integration to "one adapter file that imports `SynthHandle`,"
-written after this bootstrap, not as part of it.
+---
+
+## 3. Keyboard Input (`input/keyboard.py`)
+
+Maps QWERTY keys to MIDI notes (piano-style: Z=X keyboard row = white keys, S=D etc = black keys). Yields `NoteOn(pitch, velocity)` / `NoteOff(pitch)` via callbacks into `AudioPipeline.send_note_on()` / `send_note_off()`.
+
+No threading — polls from the main loop. The callbacks push into `AudioPipeline`'s control queue, which the audio thread drains at the top of each callback.
 
 ---
 
-## 7. MIDI input: tradeoffs (per your question)
+## 4. MIDI Input (`input/midi.py`)
 
-Two realistic options for reading a USB MIDI keyboard on a Pi:
-
-- **`mido` + `python-rtmidi`** — the standard choice. `mido` gives a clean,
-  Pythonic message API (`msg.type`, `msg.note`, `msg.velocity`); `rtmidi` is
-  the C++ backend that actually talks to ALSA/CoreMIDI/etc. This is what
-  almost every Python MIDI tutorial and project uses; well documented, well
-  maintained, works out of the box on Raspberry Pi OS (needs `librtmidi-dev`
-  at the system level — one `apt` line — plus the two `uv add` packages).
-  **Recommended** — it's the path of least resistance and most tutorials/
-  Stack Overflow answers assume it.
-- **`pygame.midi`** — works, but pygame's MIDI support is a thinner wrapper,
-  less actively maintained, and pulls in all of pygame as a dependency for a
-  feature you're only using a sliver of. Not recommended here.
-
-Go with **`mido` + `python-rtmidi`**. A USB keyboard that identifies as a
-class-compliant MIDI device will just show up as a MIDI port on Linux with no
-driver install — `mido.get_input_names()` lists it.
+Uses `mido` + `python-rtmidi`. Opens a background thread that blocks on `port.receive()` and pushes `NoteOn`/`NoteOff` into the `AudioPipeline` control queue.
 
 ---
 
-## 8. Patch / pipeline persistence (Section for later, scope it now)
+## 5. GUI Panel (`gui/synth_panel.py`)
 
-You mentioned this will "probably require" a save system — spec it now so
-the `Node` interface is designed to support it from day one, even if the
-save/load *feature* is v2.
+A `Control` tree rendered by Sol's `SceneTree`:
 
-Approach: since every `Node` already exposes `get_params()` (Section 5.3),
-a patch file is just:
+```
+Panel (VBoxContainer)
+├── Header (Label: "Neptune Synth")
+├── Pipeline View (HBoxContainer)
+│   ├── OscillatorBox (ColorRect + Label + Knob)
+│   ├── FilterBox    (ColorRect + Label + Knob)
+│   └── GainBox      (ColorRect + Label + Knob)
+└── Waveform View (custom Control polling probe data)
+```
+
+The waveform view calls `pipeline.get_probe_data(node_index, n_samples)` at ~30Hz and draws waveform lines via `DrawList` primitives (or direct vertex buffer updates).
+
+Knob widgets call `pipeline.send_set_param(node_name, param, value)` on mouse drag — which enqueues a control message for the audio thread.
+
+---
+
+## 6. Patch Persistence (`patch.py`)
+
+```python
+def save_patch(pipeline: AudioPipeline, path: str) -> None:
+    """Serialize the AudioNode tree to a .solpatch JSON file."""
+    ...
+
+def load_patch(pipeline: AudioPipeline, path: str) -> None:
+    """Deserialize a .solpatch JSON file into an AudioNode tree."""
+    ...
+```
+
+Format:
+
 ```json
 {
-  "pipeline": [
-    {"type": "Mixer", "params": {}},
-    {"type": "Gain", "params": {"level": 0.8}}
-  ],
-  "input_source": "midi",
-  "sample_rate": 44100
+  "sample_rate": 44100,
+  "root": {
+    "type": "MixerNode",
+    "name": "main",
+    "params": {},
+    "children": [
+      {
+        "type": "VoiceNode",
+        "name": "lead",
+        "params": { "note": 60, "velocity": 0.8 },
+        "children": [
+          { "type": "OscillatorNode",
+            "params": { "waveform": "SINE", "freq": 261.63, "amp": 1.0 }},
+          { "type": "EnvelopeNode",
+            "params": { "attack": 0.01, "decay": 0.15, "sustain": 0.7, "release": 0.3 }}
+        ]
+      },
+      { "type": "GainNode", "params": { "level": 0.8 }}
+    ]
+  }
 }
 ```
-`persistence/patch.py` provides `save_patch(graph, path)` /
-`load_patch(path) -> Graph`, using a simple registry (`dict[str, Type[Node]]`)
-that maps the `"type"` string to the actual class — new `Node` subclasses
-register themselves (a one-line decorator: `@register_node("Gain")`), so
-saving/loading automatically picks up modules she's written herself as long
-as they're imported before load. This is the natural place a "modules and
-extensions" system grows into without inventing a plugin framework up front.
 
-**v1 scope**: implement the registry and `get_params()`/`set_param()` on
-every node now (cheap, and it's also what the GUI introspection needs). Wire
-up actual `save_patch`/`load_patch` as a fast-follow, not blocking v1.
+Each `AudioNode` subclass exposes `get_params() -> dict` and `set_param(name, value)` — also used for GUI introspection. A registry (`dict[str, Type[AudioNode]]`) maps `"type"` strings to constructors. New node types register via a one-line decorator: `@register_audio_node("MyEffect")`.
 
 ---
 
-## 9. GUI mode (generic interface only — see Section 6)
-
-For this bootstrap, do **not** build a GUI. Build:
-1. The `SynthHandle` interface (Section 6), fully implemented and tested
-   against the headless audio path.
-2. A **minimal** reference consumer as a `tests/`-style script — e.g. a
-   script that polls `get_probe_data()` and dumps it to a `.wav` or prints
-   RMS levels — just enough to prove the interface works end-to-end, without
-   building real UI. This is the seam I'll help you wire your engine into
-   once this is running.
-
----
-
-## 10. Dependencies (uv)
+## 7. Dependencies
 
 ```
-uv add numpy sounddevice mido python-rtmidi
-uv add --dev pytest
+uv add mido python-rtmidi
 ```
-Raspberry Pi note: `python-rtmidi` needs system ALSA/JACK dev headers —
-`sudo apt install librtmidi-dev libasound2-dev` before `uv sync` on the Pi.
-`sounddevice` needs PortAudio — `sudo apt install libportaudio2`.
+
+Raspberry Pi: `sudo apt install librtmidi-dev libasound2-dev` before `uv sync`.
+
+`sounddevice` is NOT a dependency — audio I/O is handled by Sol's C engine via SDL3 or ALSA.
 
 ---
 
-## 11. v1 acceptance criteria (what "bootstrap done" means)
+## 8. v2 Acceptance Criteria
 
-1. `uv run synth --headless` opens an audio stream and lets you play notes
-   via `ComputerKeyboardInput` (no MIDI hardware required to test) with a
-   single sine oscillator voice, hearing sound with reasonable latency and
-   no glitching, on both a normal dev machine and a Pi.
-2. `--midi` flag switches input source to a connected USB MIDI device with
-   no other code changes (input source is fully swappable via `InputSource`).
-3. The pipeline is exactly two nodes (`Mixer` → `Gain`) to prove the `Node`
-   interface and hot-swap path work, not because two is architecturally
-   special.
-4. `SynthHandle` is implemented and covered by a test that: starts the audio
-   path, sends a note-on via `send_control`, asserts `get_probe_data`
-   returns nonzero samples, sends a `set_param` to change gain, asserts the
-   probed waveform amplitude changed.
-5. `examples/extending/my_first_oscillator.py` and `my_first_node.py` exist,
-   are short (<40 lines each), and are referenced from the README as "start
-   here to add your own sound."
-6. Every ABC (`Oscillator`, `Modulator`, `Node`, `InputSource`) has a
-   docstring with a minimal worked example inline.
-7. `tests/test_rtsafe.py` specifically tests the control-queue and
-   ring-buffer under concurrent access (e.g. a background thread hammering
-   writes while the main thread reads), since this is the one part of the
-   system where a subtle bug would be genuinely hard to debug later.
+1. `uv run neptune/main.py --headless` opens audio via ALSA. QWERTY keys play sine tones with no glitching.
+2. `--midi` flag switches input source to USB MIDI device. Same audio path, different input source.
+3. The pipeline is `MixerNode → VoiceNode(OscillatorNode + EnvelopeNode) → GainNode` and produces polyphonic sound.
+4. `--gui` flag opens a Sol-rendered window with probe waveform display and parameter knobs.
+5. `--patch my_sound.solpatch` loads a serialized AudioNode tree.
+6. `examples/extending/my_first_voice.py` is <40 lines and produces sound when run.
 
 ---
 
-## 12. Explicit non-goals for v1 (so the agent doesn't over-build)
+## 9. Explicit Non-Goals for v2
 
-- No plugin auto-discovery / dynamic import scanning — explicit imports +
-  the `@register_node` decorator is enough for now.
-- No stereo, effects sends, or multi-output routing — mono, single output.
-- No actual GUI implementation — interface only (Section 9).
-- No polyphony voice-stealing logic beyond "cap at N voices, drop oldest" —
-  fine for v1, worth revisiting later.
+- No plugin auto-discovery — explicit imports + `@register_audio_node` decorator.
+- No stereo or multi-output routing — mono, single output.
+- No custom DSP language or visual patcher — Python code is the patcher.
 - No packaging/distribution beyond `uv run` from source.
+
+---
+
+*Specification version 2.0 — Neptune Synth (Sol Audio Engine composition layer)*

@@ -1,35 +1,34 @@
 # Sol Engine
 
-A cross-platform game engine written in **C99** with **SDL3 + Vulkan** rendering,
-wrapped for **Python** via `ctypes`.
+A cross-platform game and audio engine written in **C99** with **SDL3 + Vulkan** rendering, wrapped for **Python** via `ctypes`.
 
 ## Architecture
 
 ```
-game/main.py          ← your game code
-    │
-    ▼
-src/sol/              ← Python package (ctypes bindings)
-    ├── bindings.py   ← loads libsol.so, exposes sol.init/update/shutdown
-    ├── ui_bindings.py ← UI system wrapper (Godot-inspired retained-mode)
-    └── sol.py        ← public API re-exports
-    │
-    ▼
-libsol.so             ← compiled C99 shared library
-    │
-    ├── engine.c               ← core dispatch (init → platform)
-    ├── io/
-    │   ├── io_sdl3.c    ← SDL3 window + Vulkan bootstrap
-    │   ├── io_vulkan.c  ← pure Vulkan renderer (swapchain, pipeline, draw)
-    │   └── io_headless.c← no-op backend
-    └── ui/                    ← Godot-inspired retained-mode UI
-        ├── node.c             ← base object (vtable, refcount, tree ops)
-        ├── control.c          ← rect, anchors, layout
-        ├── draw_list.c        ← renderer-agnostic draw commands
-        ├── scene_tree.c       ← frame orchestrator (process→layout→draw)
-        ├── color_rect.c       ← colored rectangle widget
-        └── vbox_container.c   ← vertical box layout container
+libsol.so (C99 engine)          Python (ctypes wrappers)
+┌─────────────────────────┐     ┌──────────────────────┐
+│ scene/  — 2D UI system  │     │ sol.bindings         │
+│ audio/  — synth nodes   │ ◄── │ sol.ui_bindings      │
+│ text/   — font + emoji  │     │ sol.audio_bindings   │
+│ debug/  — mem + logging │     │ sol.text_bindings    │
+│ photon/ — Vulkan        │     └──────────────────────┘
+│ io/    — SDL3, ALSA     │
+└─────────────────────────┘
+     ▲
+     │
+┌────┴─────────────────────────────────────────────┐
+│  Neptune — Python synth composer layer           │
+│  (composes AudioNodes, drives GUI via Controls)  │
+└──────────────────────────────────────────────────┘
 ```
+
+**Key concepts:**
+- **Node** → base type with manual vtables, refcounting, tree hierarchy
+- **Control** → rect, anchors, size flags, two-pass layout
+- **AudioNode** → audio processing nodes (Oscillator, Voice, Mixer, Gain, Envelope)
+- **AudioPipeline** → real-time audio execution (control queue, probes, audio callback)
+- **DrawList** → renderer-agnostic command buffer
+- **SceneTree** → orchestrates process → layout → draw each frame
 
 ## Quick Start
 
@@ -43,74 +42,57 @@ libsol.so             ← compiled C99 shared library
 ### Build & Run
 
 ```bash
-# Build the C engine (shared library)
+# Build the C engine
 python3 scripts/build_engine.py
 
-# Run the hello-triangle demo
-PYTHONPATH=src python3 game/main.py
-
-# Run the UI system example
+# Run UI example
 PYTHONPATH=src python3 examples/ui_example.py
-```
 
-### Development Workflow
-
-```bash
-# One-time setup
-uv venv
-source .venv/bin/activate
-uv pip install -e .
-
-# After C changes — rebuild
-python3 scripts/build_engine.py
-
-# After Python changes — just re-run
+# Run game demo
 PYTHONPATH=src python3 game/main.py
+
+# Run Neptune synth (headless)
+PYTHONPATH=src python3 neptune/main.py --headless
 ```
-
-## Platform Targets
-
-| Platform | Windowing | Renderer | Packaging |
-|----------|-----------|----------|-----------|
-| **Linux Desktop** | SDL3 | Vulkan | `uv` + Nuitka |
-| **Windows Desktop** | SDL3 | Vulkan | `uv` + Nuitka |
-| **Android** | SDL3 | Vulkan | Buildozer (`buildozer.spec`) |
-| **Headless** | — | — | CI/testing |
-
-## UI System
-
-The engine includes a Godot-inspired retained-mode UI system at `src/engine/ui/`.
-It produces renderer-agnostic draw commands consumed by the Vulkan backend.
-
-Key concepts:
-- **Node** → base type with manual vtables, refcounting, tree hierarchy
-- **Control** → rect, anchors, size flags, layouts
-- **Container** → VBoxContainer with SIZE_FILL, SIZE_EXPAND, separation
-- **DrawList** → command buffer (filled rects, borders, text, clip rects)
-- **SceneTree** → orchestrates process → two-pass layout → draw each frame
-
-See `examples/ui_example.py` for a complete Python example.
 
 ## Project Layout
 
 ```
 sol/
-├── game/main.py               ← application entry point
-├── examples/ui_example.py     ← UI system demo
+├── game/main.py
+├── examples/ui_example.py
 ├── src/
-│   ├── engine/                ← C99 engine
-│   │   ├── engine.h/c         ← public API
-│   │   ├── io/          ← platform backends
-│   │   ├── ui/                ← UI system
-│   │   └── shaders/           ← SPIR-V assembly sources
-│   └── sol/                   ← Python package
-│       ├── __init__.py
-│       ├── bindings.py        ← ctypes engine bindings
-│       ├── ui_bindings.py     ← ctypes UI bindings
-│       └── sol.py
-├── scripts/build_engine.py    ← build script (invoked by setup.py)
-├── setup.py                   ← setuptools integration
-├── pyproject.toml             ← project metadata
-├── buildozer.spec             ← Android packaging
-└── docs/                      ← specifications
+│   ├── sol/                   ← C99 engine
+│   │   ├── core.h/c           ← init/update/shutdown
+│   │   ├── io/                ← platform backends (SDL3, ALSA, headless)
+│   │   ├── photon/            ← Vulkan renderer
+│   │   ├── scene/             ← 2D UI (Node, Control, Containers, DrawList)
+│   │   ├── audio/             ← audio synthesis nodes (PHASE 1)
+│   │   ├── text/              ← unicode text + emoji (PHASE 3)
+│   │   ├── debug/             ← memory tracking + logging (PHASE 3)
+│   │   └── shaders/           ← SPIR-V assembly
+│   └── sol/                   ← Python package (ctypes bindings)
+├── neptune/                   ← Python synth layer
+├── scripts/build_engine.py
+├── pyproject.toml
+└── docs/                      ← specifications + roadmap
 ```
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [`docs/sol_spec.md`](docs/sol_spec.md) | **Master architecture spec** — read this first |
+| [`docs/scene_spec.md`](docs/scene_spec.md) | UI system detailed spec |
+| [`docs/neptune_spec.md`](docs/neptune_spec.md) | Neptune synth layer spec |
+| [`docs/build_spec.md`](docs/build_spec.md) | Build system spec |
+| [`docs/roadmap.md`](docs/roadmap.md) | Development phases and progress |
+
+## Design Principles
+
+- **C99 hot path, Python logic path** — ctypes, zero overhead
+- **Flat vtables, not deep hierarchies** — struct embedding, no C++ inheritance
+- **Node is a pure tree container** — no spatial/audio state in the base
+- **2D-first, 3D-ready** — Spatial3D is designed but not yet implemented
+- **Python is the editor** — no custom IDE, `uv run` is the launch command
+- **No generated bindings** — hand-written ctypes wrappers, readable and debuggable

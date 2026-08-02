@@ -1,85 +1,77 @@
-# Build System Specification
+# Build System Specification v3.0
 
-**Version:** 2.0  
-**Targets:** Linux (x86_64), Windows (x86_64), Android (arm64-v8a, x86_64)  
+**Targets:** Linux (x86_64), Raspberry Pi (arm64), Windows (x86_64), Android (arm64)
 
 ---
 
-## 1. Build Philosophy
+## 1. Source File Map
 
-No CMake, Meson, or Makefiles. The build system uses:
+| Component | Files |
+|-----------|-------|
+| Engine core | `src/sol/core.h`, `src/sol/core.c` |
+| Platform abstraction | `src/sol/io/io.h` |
+| SDL3 backend | `src/sol/io/io_sdl3.c` |
+| Headless/ALSA backend | `src/sol/io/io.c` |
+| Vulkan renderer | `src/sol/photon/photon_vulkan.h`, `src/sol/photon/photon_vulkan.c` |
+| Shaders | `src/sol/shaders/` → `src/sol/shaders.h` (generated) |
+| Node system | `src/sol/scene/node.h`, `src/sol/scene/node.c` |
+| Control | `src/sol/scene/control.h`, `src/sol/scene/control.c` |
+| DrawList | `src/sol/scene/draw_list.h`, `src/sol/scene/draw_list.c` |
+| SceneTree | `src/sol/scene/scene_tree.h`, `src/sol/scene/scene_tree.c` |
+| ColorRect | `src/sol/scene/color_rect.h`, `src/sol/scene/color_rect.c` |
+| VBoxContainer | `src/sol/scene/vbox_container.h`, `src/sol/scene/vbox_container.c` |
+| Math types | `src/sol/scene/types.h` |
+| Audio system *(Phase 1)* | `src/sol/audio/` |
+| Text system *(Phase 3)* | `src/sol/text/` |
+| Debug system *(Phase 3)* | `src/sol/debug/` |
 
-- **`scripts/build_engine.py`** — single Python script that does everything
-- **`setup.py`** — setuptools shim (invokes build script via custom `build_ext`)
-- **`spirv-as`** — SPIR-V assembler (from `spirv-tools`) for shader compilation
+---
 
 ## 2. Build Script (`scripts/build_engine.py`)
 
 ### 2.1 Shader Assembly
 
-SPIR-V assembly sources (`src/engine/shaders/*.vert`, `*.frag`) are assembled to `.spv` binary via `spirv-as`, then embedded as C byte arrays in a generated header `src/engine/shaders.h`.
-
-Rebuild is triggered when:
-- The `.vert`/`.frag` source is newer than the `.spv`
-- The `.spv` is newer than `shaders.h`
-- `shaders.h` doesn't exist
+SPIR-V assembly sources (`src/sol/shaders/*.vert`, `*.frag`) → `.spv` binary via `spirv-as` → embedded as C byte arrays in `src/sol/shaders.h`.
 
 ### 2.2 C Compilation
 
-All C99 sources are compiled into a single shared library:
-
 ```bash
 gcc -std=c99 -O3 -fPIC -shared \
-    -I src/engine \
+    -I src/sol \
     $(pkg-config --cflags --libs sdl3) \
-    src/engine/engine.c \
-    src/engine/io/io_sdl3.c \
-    src/engine/io/io_vulkan.c \
-    src/engine/io/io_headless.c \
-    src/engine/ui/node.c \
-    src/engine/ui/control.c \
-    src/engine/ui/draw_list.c \
-    src/engine/ui/scene_tree.c \
-    src/engine/ui/color_rect.c \
-    src/engine/ui/vbox_container.c \
-    -o src/sol/libsol.so \
+    src/sol/core.c \
+    src/sol/io/io_sdl3.c \
+    src/sol/io/io.c \
+    src/sol/photon/photon_vulkan.c \
+    src/sol/scene/node.c \
+    src/sol/scene/control.c \
+    src/sol/scene/draw_list.c \
+    src/sol/scene/scene_tree.c \
+    src/sol/scene/color_rect.c \
+    src/sol/scene/vbox_container.c \
+    -o src/sol/python/libsol.so \
     -lvulkan -lm
 ```
 
+Audio, text, and debug sources are added as they are implemented.
+
 ### 2.3 Incremental Build
 
-The script checks file modification times. If `libsol.so` is newer than all source files, the build is skipped.
+File modification timestamps checked. If `libsol.so` is newer than all sources, build is skipped.
 
-## 3. Source File Map
+---
 
-| Component | Files |
-|-----------|-------|
-| Engine core | `engine.h`, `engine.c` |
-| Platform abstraction | `io/io.h` |
-| SDL3 backend | `io/io_sdl3.c` |
-| Vulkan renderer | `io/io_vulkan.h`, `io/io_vulkan.c` |
-| Headless backend | `io/io_headless.c` |
-| Shaders | `shaders/vertex.vert`, `shaders/fragment.frag` → `shaders.h` (generated) |
-| Node system | `ui/node.h`, `ui/node.c` |
-| Control | `ui/control.h`, `ui/control.c` |
-| DrawList | `ui/draw_list.h`, `ui/draw_list.c` |
-| SceneTree | `ui/scene_tree.h`, `ui/scene_tree.c` |
-| ColorRect widget | `ui/color_rect.h`, `ui/color_rect.c` |
-| VBoxContainer | `ui/vbox_container.h`, `ui/vbox_container.c` |
-| Math types | `ui/types.h` |
-| Public include | `ui.h` |
-
-## 4. Dependencies
+## 3. Dependencies
 
 ### Build-time
 
-| Dependency | Version | Purpose |
-|------------|---------|---------|
-| GCC or Clang | any C99-capable | C compilation |
-| SDL3 | ≥ 3.2 | Windowing, Vulkan surface |
-| Vulkan SDK | ≥ 1.0 | Headers + loader |
-| spirv-as | from spirv-tools | Shader assembly |
-| Python | ≥ 3.10 | Build script + host runtime |
+| Dependency | Purpose |
+|------------|---------|
+| GCC or Clang (C99) | C compilation |
+| SDL3 ≥ 3.2 | Windowing, Vulkan surface, audio |
+| Vulkan SDK ≥ 1.0 | Headers + loader |
+| spirv-as (from spirv-tools) | Shader assembly |
+| Python ≥ 3.10 | Build script + runtime |
 
 ### Runtime
 
@@ -87,33 +79,19 @@ The script checks file modification times. If `libsol.so` is newer than all sour
 |------------|-------|
 | libSDL3.so | Dynamic link |
 | libvulkan.so | Dynamic link |
+| libasound.so | ALSA (headless mode, Linux only) |
 | libm.so | Math library |
 
-## 5. Platform-Specific Notes
+---
 
-### Linux
-
-SDL3 headers expected at `/usr/local/include/SDL3/`. Library at `/usr/local/lib/`.  
-Uses `pkg-config` to resolve flags.
-
-### Windows
-
-Set `VULKAN_SDK` environment variable for Vulkan headers/libs.  
-SDL3 must be findable by the compiler (add to `INCLUDE` / `LIB`).
-
-### Android (Buildozer)
-
-The `buildozer.spec` targets API level 24+ for Vulkan support.  
-`python-for-android` cross-compiles using NDK toolchain.
-
-## 6. Developer Commands
+## 4. Developer Commands
 
 ```bash
 # Full build
 python3 scripts/build_engine.py
 
 # Rebuild from clean
-rm -f src/sol/libsol.so && python3 scripts/build_engine.py
+rm -f src/sol/python/libsol.so && python3 scripts/build_engine.py
 
 # Run with local engine
 PYTHONPATH=src python3 game/main.py
@@ -121,6 +99,25 @@ PYTHONPATH=src python3 game/main.py
 # Run UI example
 PYTHONPATH=src python3 examples/ui_example.py
 
-# Install as editable package (calls setup.py → build script)
+# Run Neptune (headless audio)
+PYTHONPATH=src python3 neptune/main.py --headless
+
+# Run Neptune (GUI)
+PYTHONPATH=src python3 neptune/main.py --gui
+
+# Install as editable package
 uv pip install -e .
 ```
+
+---
+
+## 5. Raspberry Pi Notes
+
+- ALSA audio requires `libasound2-dev`
+- Vulkan: Pi 4+ supports Vulkan 1.2 via v3dv (Mesa). May require `mesa-vulkan-drivers`
+- SDL3: install from source or distro package if available
+- MIDI: `sudo apt install librtmidi-dev` for python-rtmidi
+
+---
+
+*Specification version 3.0*
