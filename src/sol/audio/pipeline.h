@@ -96,4 +96,10 @@ uint32_t audio_pipeline_register_node(AudioPipeline* ap, AudioNode* node);
 void audio_pipeline_callback(float* output, int n_frames, int channels,
                               void* userdata);
 
+/* --- Offline rendering (non-real-time, for WAV export) ---
+   Processes N frames through the audio graph and writes to buffer.
+   Buffer must be pre-allocated with n_frames floats.
+   Control queue is drained before rendering. */
+void audio_pipeline_render_offline(AudioPipeline* ap, float* buffer, int n_frames);
+
 #endif /* SOL_AUDIO_PIPELINE_H */

@@ -187,103 +187,6 @@ static bool build_framebuffers(SolVulkan* vk) {
     return true;
 }
 
-static bool build_pipeline(SolVulkan* vk) {
-    VkShaderModule vert, frag;
-    if (create_shader_module(vk->device, vertex_spv, vertex_spv_len, &vert) != VK_SUCCESS) {
-        fprintf(stderr, "[vulkan] vertex shader module failed\n");
-        return false;
-    }
-    if (create_shader_module(vk->device, fragment_spv, fragment_spv_len, &frag) != VK_SUCCESS) {
-        fprintf(stderr, "[vulkan] fragment shader module failed\n");
-        vkDestroyShaderModule(vk->device, vert, NULL);
-        return false;
-    }
-
-    VkPipelineShaderStageCreateInfo stages[] = {
-        { .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-          .stage = VK_SHADER_STAGE_VERTEX_BIT, .module = vert, .pName = "main" },
-        { .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-          .stage = VK_SHADER_STAGE_FRAGMENT_BIT, .module = frag, .pName = "main" },
-    };
-
-    VkDynamicState dyn[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
-    VkPipelineDynamicStateCreateInfo dyn_state = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-        .dynamicStateCount = 2, .pDynamicStates = dyn,
-    };
-
-    VkPipelineVertexInputStateCreateInfo vert_input = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-    };
-    VkPipelineInputAssemblyStateCreateInfo input_asm = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-        .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
-    };
-
-    VkViewport vp = { 0, 0, (float)vk->extent.width, (float)vk->extent.height, 0.f, 1.f };
-    VkRect2D   sc = { {0, 0}, { vk->extent.width, vk->extent.height } };
-    VkPipelineViewportStateCreateInfo vp_state = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
-        .viewportCount = 1, .pViewports = &vp,
-        .scissorCount  = 1, .pScissors  = &sc,
-    };
-
-    VkPipelineRasterizationStateCreateInfo raster = {
-        .sType     = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-        .polygonMode = VK_POLYGON_MODE_FILL,
-        .cullMode    = VK_CULL_MODE_BACK_BIT,
-        .frontFace   = VK_FRONT_FACE_CLOCKWISE,
-        .lineWidth   = 1.f,
-    };
-
-    VkPipelineMultisampleStateCreateInfo ms = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-        .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
-    };
-
-    VkPipelineColorBlendAttachmentState blend_att = {
-        .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
-                          VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
-    };
-    VkPipelineColorBlendStateCreateInfo blend = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-        .attachmentCount = 1, .pAttachments = &blend_att,
-    };
-
-    VkPipelineLayoutCreateInfo plci = { .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
-    if (vkCreatePipelineLayout(vk->device, &plci, NULL, &vk->pipeline_layout) != VK_SUCCESS) {
-        fprintf(stderr, "[vulkan] vkCreatePipelineLayout failed\n");
-        vkDestroyShaderModule(vk->device, vert, NULL);
-        vkDestroyShaderModule(vk->device, frag, NULL);
-        return false;
-    }
-
-    VkGraphicsPipelineCreateInfo gpci = {
-        .sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-        .stageCount          = 2, .pStages = stages,
-        .pVertexInputState   = &vert_input,
-        .pInputAssemblyState = &input_asm,
-        .pViewportState      = &vp_state,
-        .pRasterizationState = &raster,
-        .pMultisampleState   = &ms,
-        .pColorBlendState    = &blend,
-        .pDynamicState       = &dyn_state,
-        .layout              = vk->pipeline_layout,
-        .renderPass          = vk->render_pass,
-        .subpass             = 0,
-    };
-
-    VkResult r = vkCreateGraphicsPipelines(vk->device, VK_NULL_HANDLE, 1, &gpci, NULL, &vk->pipeline);
-
-    vkDestroyShaderModule(vk->device, vert, NULL);
-    vkDestroyShaderModule(vk->device, frag, NULL);
-
-    if (r != VK_SUCCESS) {
-        fprintf(stderr, "[vulkan] vkCreateGraphicsPipelines failed\n");
-        return false;
-    }
-    return true;
-}
 
 /* ------------------------------------------------------------------ */
 /* Sync & command buffers                                              */
@@ -338,14 +241,48 @@ static void record_commands(SolVulkan* vk, VkCommandBuffer cmd, uint32_t image_i
     };
     vkCmdBeginRenderPass(cmd, &rpbi, VK_SUBPASS_CONTENTS_INLINE);
 
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vk->pipeline);
+    /* Begin 2D batch — clears accumulated primitives from previous frame */
+    if (vk->render2d) {
+        render2d_begin((Render2D*)vk->render2d,
+                       (float)vk->extent.width, (float)vk->extent.height);
+    }
 
-    VkViewport vp = { 0, 0, (float)vk->extent.width, (float)vk->extent.height, 0.f, 1.f };
-    vkCmdSetViewport(cmd, 0, 1, &vp);
-    VkRect2D sc = {{ 0, 0 }, { vk->extent.width, vk->extent.height }};
-    vkCmdSetScissor(cmd, 0, 1, &sc);
-
-    vkCmdDraw(cmd, 3, 1, 0, 0);
+    /* Feed non-rect draw list commands into the 2D batch renderer
+       before flushing. RECT_FILLED and clip commands are handled
+       by the UI pass below with proper scissor clipping. */
+    if (vk->ui_draw_list && vk->render2d) {
+        Render2D* r2d = (Render2D*)vk->render2d;
+        const DrawList* dl = (const DrawList*)vk->ui_draw_list;
+        const size_t n = draw_list_cmd_count(dl);
+        for (size_t i = 0; i < n; i++) {
+            DrawCmd cmd = draw_list_get_cmd(dl, i);
+            switch (cmd.type) {
+            case DRAW_CMD_CIRCLE_FILLED: {
+                float cx = cmd.rect.x + cmd.rect.w * 0.5f;
+                float cy = cmd.rect.y + cmd.rect.h * 0.5f;
+                render2d_draw_circle(r2d, cx, cy, cmd.corner_radius,
+                                     cmd.color, true);
+                break;
+            }
+            case DRAW_CMD_LINE_STRIP:
+                if (cmd.line_points && cmd.line_point_count >= 2) {
+                    for (size_t j = 1; j < cmd.line_point_count; j++) {
+                        render2d_draw_line(r2d,
+                            cmd.line_points[j-1].x, cmd.line_points[j-1].y,
+                            cmd.line_points[j].x,   cmd.line_points[j].y,
+                            cmd.color, cmd.border_width > 0 ? cmd.border_width : 1.5f);
+                    }
+                }
+                break;
+            case DRAW_CMD_RECT_BORDER:
+                render2d_draw_rect_border(r2d, cmd.rect.x, cmd.rect.y,
+                    cmd.rect.w, cmd.rect.h, cmd.color, cmd.border_width);
+                break;
+            default:
+                break;
+            }
+        }
+    }
 
     /* Render 2D batch (game objects, primitives) */
     sol_vulkan_2d_flush(vk, cmd);
@@ -666,7 +603,6 @@ bool sol_vulkan_init(SolVulkan* vk,
 
     if (!build_swapchain(vk))       return false;
     if (!build_render_pass(vk))     return false;
-    if (!build_pipeline(vk))        return false;
     if (!build_framebuffers(vk))    return false;
     if (!build_command_buffers(vk)) return false;
     if (!build_sync(vk))            return false;
@@ -696,8 +632,6 @@ void sol_vulkan_shutdown(SolVulkan* vk) {
     if (vk->ui_pipeline)      vkDestroyPipeline(vk->device, vk->ui_pipeline, NULL);
     if (vk->ui_pipeline_layout) vkDestroyPipelineLayout(vk->device, vk->ui_pipeline_layout, NULL);
     if (vk->command_pool)    vkDestroyCommandPool(vk->device, vk->command_pool, NULL);
-    if (vk->pipeline)        vkDestroyPipeline(vk->device, vk->pipeline, NULL);
-    if (vk->pipeline_layout) vkDestroyPipelineLayout(vk->device, vk->pipeline_layout, NULL);
     if (vk->render_pass)     vkDestroyRenderPass(vk->device, vk->render_pass, NULL);
 
     /* 2D batch renderer */

@@ -19,6 +19,10 @@ DrawList *draw_list_create(void) {
 
 void draw_list_clear(DrawList *dl) {
     if (!dl) return;
+    /* Free any line point arrays */
+    for (size_t i = 0; i < dl->count; i++) {
+        free(dl->cmds[i].line_points);
+    }
     dl->count = 0;
     dl->clip_depth = 0;
 }
@@ -89,6 +93,31 @@ void draw_list_pop_clip(DrawList *dl) {
     memset(cmd, 0, sizeof(*cmd));
     cmd->type = DRAW_CMD_CLIP_POP;
     if (dl->clip_depth > 0) dl->clip_depth--;
+}
+
+void draw_list_add_line_strip(DrawList *dl, const Vec2 *points, size_t count, Color c) {
+    if (!dl || !points || count < 2) return;
+    ensure_capacity(dl, 1);
+    DrawCmd *cmd = &dl->cmds[dl->count++];
+    memset(cmd, 0, sizeof(*cmd));
+    cmd->type = DRAW_CMD_LINE_STRIP;
+    cmd->color = c;
+    cmd->line_point_count = count;
+    cmd->line_points = malloc(sizeof(Vec2) * count);
+    if (cmd->line_points) {
+        memcpy(cmd->line_points, points, sizeof(Vec2) * count);
+    }
+}
+
+void draw_list_add_circle_filled(DrawList *dl, float cx, float cy, float radius, Color c) {
+    if (!dl) return;
+    ensure_capacity(dl, 1);
+    DrawCmd *cmd = &dl->cmds[dl->count++];
+    memset(cmd, 0, sizeof(*cmd));
+    cmd->type = DRAW_CMD_CIRCLE_FILLED;
+    cmd->rect = rect_make(cx - radius, cy - radius, radius * 2, radius * 2);
+    cmd->color = c;
+    cmd->corner_radius = radius;
 }
 
 size_t draw_list_cmd_count(const DrawList *dl) {

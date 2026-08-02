@@ -229,4 +229,88 @@ Raspberry Pi: `sudo apt install librtmidi-dev libasound2-dev` before `uv sync`.
 
 ---
 
-*Specification version 2.0 — Neptune Synth (Sol Audio Engine composition layer)*
+## 10. File Formats
+
+### 10.1 Synth Patch (`.solpatch`)
+
+JSON serialization of an AudioNode tree. See §6 for format.
+
+### 10.2 UI Scene (`.solscene`)
+
+Planned: JSON serialization of a Control tree. Same pattern as `.solpatch`:
+
+```json
+{
+  "root": {
+    "type": "VBoxContainer",
+    "name": "root",
+    "rect": {"x": 0, "y": 0, "w": 800, "h": 600},
+    "children": [
+      { "type": "Label", "props": { "text": "Hello", "font_size": 24 }},
+      { "type": "Button", "props": { "text": "Click Me" }}
+    ]
+  }
+}
+```
+
+### 10.3 Audio Export (`.wav`)
+
+16-bit PCM mono WAV via Python's `wave` module. No external encoders needed.
+`neptune/export.py` provides `render_to_wav(pipeline, path, duration)`.
+
+---
+
+## 11. Deployment
+
+### 11.1 Desktop (Linux/Windows/macOS)
+
+**Nuitka** compiles Python to a standalone binary:
+
+```bash
+pip install nuitka
+python -m nuitka --standalone --onefile neptune/main.py
+./main.bin --gui
+```
+
+This bundles libsol.so, SDL3, Vulkan loader, and all Python deps into one executable.
+
+### 11.2 Android
+
+**Buildozer** packages for Android via `buildozer.spec` (already exists in project root):
+
+```bash
+buildozer android debug deploy run
+```
+
+Requires SDL3 cross-compiled for arm64 and the Sol engine built as a .so for Android.
+
+### 11.3 Raspberry Pi (ARM Headless)
+
+```bash
+# Build engine for ARM
+CC=arm-linux-gnueabihf-gcc python3 scripts/build.py
+
+# Run headless
+PYTHONPATH=src python3 neptune/main.py --headless
+```
+
+---
+
+## 12. Sol Engine File I/O Module (Planned)
+
+A lightweight, portable file abstraction in `src/sol/io/file.h`:
+
+```c
+/* Minimal file I/O — reads entire file into a buffer, writes buffer to file.
+   No streaming, no buffering overhead. Designed for scene/patch loading. */
+char* sol_file_read_all(const char* path, size_t* out_len);
+bool  sol_file_write_all(const char* path, const char* data, size_t len);
+```
+
+This gives the C engine a dependency-free way to load/save scenes and patches,
+with Python wrappers for JSON serialization. No libc FILE* overhead — just
+open/read/close via POSIX or SDL3_RWops.
+
+---
+
+*Specification version 2.1 — Neptune Synth (Sol Audio Engine composition layer)*

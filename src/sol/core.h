@@ -20,6 +20,10 @@ void sol_get_size(int* width, int* height);
 /* Push a MIDI / device event from any thread */
 bool sol_push_event(const SolEvent* ev);
 
+/* Get the SceneTree for UI rendering (SDL3 backend only; NULL on headless).
+   The Python layer can replace the root to show custom UI. */
+void* sol_get_scene_tree(void);
+
 #ifdef __cplusplus
 }
 #endif

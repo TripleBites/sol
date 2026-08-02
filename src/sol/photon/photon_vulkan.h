@@ -44,8 +44,6 @@ typedef struct SolVulkan {
 
     /* Pipeline */
     VkRenderPass      render_pass;
-    VkPipelineLayout  pipeline_layout;
-    VkPipeline        pipeline;
 
     /* Command buffers */
     VkCommandPool     command_pool;

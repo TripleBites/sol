@@ -322,3 +322,46 @@ void audio_pipeline_callback(float* output, int n_frames, int channels,
         }
     }
 }
+
+/* ------------------------------------------------------------------ */
+/* Offline rendering (for WAV export)                                   */
+/* ------------------------------------------------------------------ */
+void audio_pipeline_render_offline(AudioPipeline* ap, float* buffer, int n_frames) {
+    if (!ap || !buffer || n_frames <= 0) return;
+
+    /* Process one warm-up frame first to initialize lazy state
+       (e.g., VoiceNode's child discovery). This ensures control
+       messages find their targets. */
+    float warmup[64];
+    memset(warmup, 0, sizeof(warmup));
+    if (ap->root) {
+        audio_node_process(ap->root, warmup, 1);
+    }
+
+    /* Process in chunks of buffer_size */
+    int remaining = n_frames;
+    int offset = 0;
+
+    while (remaining > 0) {
+        int chunk = remaining;
+        if (chunk > ap->buffer_size) chunk = ap->buffer_size;
+
+        /* Drain control queue before each chunk */
+        cq_drain(ap);
+
+        /* Zero chunk buffer */
+        float chunk_buf[4096];
+        memset(chunk_buf, 0, (size_t)chunk * sizeof(float));
+
+        /* Process audio tree */
+        if (ap->root) {
+            audio_node_process(ap->root, chunk_buf, chunk);
+        }
+
+        /* Copy to output */
+        memcpy(buffer + offset, chunk_buf, (size_t)chunk * sizeof(float));
+
+        offset += chunk;
+        remaining -= chunk;
+    }
+}

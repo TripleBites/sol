@@ -104,13 +104,25 @@ void control_set_size_flags(Control *c, uint32_t h, uint32_t v) {
     c->size_flags_v = v;
 }
 
+/* Direct rect setter — for programmatic positioning (e.g., TUI root setup) */
+void control_set_rect(Control *c, float x, float y, float w, float h) {
+    if (!c) return;
+    c->rect.x = x;
+    c->rect.y = y;
+    c->rect.w = w;
+    c->rect.h = h;
+    c->global_rect = c->rect;
+}
+
 /* --- Anchor-based layout --- */
 void control_compute_rect_from_anchors(Control *c, Rect parent_rect) {
     Anchor *a = &c->anchor;
     Rect *r = &c->rect;
 
-    r->x = parent_rect.x + parent_rect.w * a->left  + c->offset.left;
-    r->y = parent_rect.y + parent_rect.h * a->top   + c->offset.top;
+    /* Anchors are always relative to (0,0) of the parent.
+       The parent's screen-space position is handled by global_rect accumulation. */
+    r->x = parent_rect.w * a->left  + c->offset.left;
+    r->y = parent_rect.h * a->top   + c->offset.top;
     r->w = parent_rect.w * (a->right - a->left)  + c->offset.right  - c->offset.left;
     r->h = parent_rect.h * (a->bottom - a->top) + c->offset.bottom - c->offset.top;
 

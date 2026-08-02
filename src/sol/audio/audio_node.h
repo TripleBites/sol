@@ -57,4 +57,7 @@ void audio_node_remove_child(AudioNode* parent, AudioNode* child);
 void audio_node_set_id(AudioNode* an, uint32_t id);
 uint32_t audio_node_get_id(AudioNode* an);
 
+/* --- Generic parameter getter (calls node's get_param if set) --- */
+float audio_node_get_param_float(AudioNode* an, const char* name);
+
 #endif /* SOL_AUDIO_NODE_H */

@@ -1,6 +1,7 @@
 #include "scene_tree.h"
 #include "control.h"
 #include "signal.h"
+#include "../debug/logger.h"
 #include <stdlib.h>
 #include <stdio.h>
 
@@ -88,10 +89,15 @@ static void arrange_pass(Node *node, Rect parent_rect) {
         bool parent_is_container = node->parent &&
             (node->parent->flags & CONTROL_FLAG_CONTAINER);
 
-        if (!parent_is_container) {
+        /* Root node: don't recompute rect from anchors, use as-is.
+           This allows programmatic rect setting (e.g., TUI virtual window). */
+        bool is_root = (node->parent == NULL);
+
+        if (!parent_is_container && !is_root) {
             control_compute_rect_from_anchors(c, parent_rect);
         }
-        /* If parent IS a container, rect was already set by arrange_children */
+        /* If parent IS a container, rect was already set by arrange_children.
+           If root, rect is preserved as-is. */
 
         control_compute_global_rect(c, &parent_rect);
     }
@@ -101,10 +107,19 @@ static void arrange_pass(Node *node, Rect parent_rect) {
         node->klass->arrange_children(node);
     }
 
-    /* Recurse into children */
-    Rect child_parent = (c && node->klass != NULL) ? c->rect : parent_rect;
+    /* Recurse into children.
+       The child's layout reference is the parent's inner area anchored
+       at (0,0). Global rects are accumulated from the parent's global_rect
+       by control_compute_global_rect inside the child's arrange_pass. */
+    Rect child_ref;
+    if (c && node->klass != NULL) {
+        child_ref = rect_make(c->global_rect.x, c->global_rect.y,
+                              c->rect.w, c->rect.h);
+    } else {
+        child_ref = parent_rect;
+    }
     for (size_t i = 0; i < node->child_count; i++) {
-        arrange_pass(node->children[i], child_parent);
+        arrange_pass(node->children[i], child_ref);
     }
 }
 
@@ -125,7 +140,10 @@ static void process_pass(Node *node, float delta) {
 }
 
 void scene_tree_process(SceneTree *tree, float delta) {
-    if (!tree->root) return;
+    if (!tree->root) {
+        sol_trace("UI", "process: no root");
+        return;
+    }
 
     /* Process */
     process_pass(tree->root, delta);
@@ -137,6 +155,7 @@ void scene_tree_process(SceneTree *tree, float delta) {
 
     /* Layout (if dirty) */
     if (tree->layout_dirty) {
+        sol_trace("UI", "layout: running measure+arrange");
         measure_pass(tree->root);
         arrange_pass(tree->root, ((Control*)tree->root)->rect);
         tree->layout_dirty = false;
@@ -144,6 +163,9 @@ void scene_tree_process(SceneTree *tree, float delta) {
 
     /* Draw */
     scene_tree_draw(tree);
+
+    size_t cmd_count = tree->draw_list ? draw_list_cmd_count(tree->draw_list) : 0;
+    sol_trace("UI", "frame done: %zu draw commands", cmd_count);
 }
 
 /* ------------------------------------------------------------------ */
@@ -294,6 +316,12 @@ void scene_tree_input(SceneTree *tree, const UIInputEvent *ev) {
 
     switch (ev->type) {
     case UI_EV_MOUSE_MOTION: {
+        /* If a node has captured the mouse (drag), route motion to it */
+        if (tree->drag_captured && tree->drag_captured->klass->handle_input) {
+            tree->drag_captured->klass->handle_input(tree->drag_captured, ev);
+            break;
+        }
+
         /* Find the control under the cursor */
         Node *hit = hit_test_recursive(tree->root, ev->pos);
 
@@ -325,6 +353,14 @@ void scene_tree_input(SceneTree *tree, const UIInputEvent *ev) {
 
     case UI_EV_MOUSE_BUTTON: {
         Node *hit = hit_test_recursive(tree->root, ev->pos);
+
+        /* Drag capture: on press, capture the hit node.
+           On release, release the capture. */
+        if (ev->pressed && hit) {
+            tree->drag_captured = hit;
+        } else if (!ev->pressed) {
+            tree->drag_captured = NULL;
+        }
 
         /* Focus on click */
         if (ev->pressed && hit && node_is_control_kind(hit)) {

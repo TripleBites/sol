@@ -56,6 +56,10 @@ def _load():
     _lib.sol_get_size.restype = None
     _lib.sol_get_size.argtypes = [ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int)]
 
+    # sol_get_scene_tree
+    _lib.sol_get_scene_tree.restype = ctypes.c_void_p
+    _lib.sol_get_scene_tree.argtypes = []
+
     return _lib
 
 

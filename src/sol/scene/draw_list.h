@@ -12,6 +12,8 @@ typedef enum {
     DRAW_CMD_TEXTURE,
     DRAW_CMD_CLIP_PUSH,
     DRAW_CMD_CLIP_POP,
+    DRAW_CMD_LINE_STRIP,     /* polyline: line_points[0..line_point_count-1] */
+    DRAW_CMD_CIRCLE_FILLED,  /* filled circle at rect center with radius */
 } DrawCmdType;
 
 typedef struct DrawCmd {
@@ -28,6 +30,10 @@ typedef struct DrawCmd {
 
     /* For DRAW_CMD_CLIP_PUSH / POP */
     int         clip_index;
+
+    /* For DRAW_CMD_LINE_STRIP */
+    Vec2       *line_points;
+    size_t      line_point_count;
 } DrawCmd;
 
 typedef struct DrawList {
@@ -49,6 +55,8 @@ void draw_list_add_rect_border(DrawList *dl, Rect r, Color c, float width);
 void draw_list_add_text(DrawList *dl, Rect r, const char *text, Color c, uint32_t align);
 void draw_list_push_clip(DrawList *dl, Rect r);
 void draw_list_pop_clip(DrawList *dl);
+void draw_list_add_line_strip(DrawList *dl, const Vec2 *points, size_t count, Color c);
+void draw_list_add_circle_filled(DrawList *dl, float cx, float cy, float radius, Color c);
 
 /* Iteration (for the renderer backend) */
 size_t    draw_list_cmd_count(const DrawList *dl);

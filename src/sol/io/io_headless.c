@@ -199,6 +199,7 @@ static SolIO headless_platform = {
     .update         = headless_update,
     .get_size       = headless_get_size,
     .poll_input     = headless_poll_input,
+    .render         = NULL,  /* no rendering in headless mode */
     .audio_init     = headless_audio_init,
     .audio_shutdown  = headless_audio_shutdown,
     .audio_lock     = headless_audio_lock,

@@ -78,6 +78,29 @@ def _load():
     _lib.theme_create_default.restype = ctypes.c_void_p
     _lib.theme_create_default.argtypes = []
 
+    # Knob
+    _lib.knob_new.restype = ctypes.c_void_p
+    _lib.knob_new.argtypes = []
+    _lib.knob_set_range.restype = None
+    _lib.knob_set_range.argtypes = [ctypes.c_void_p,
+                                     ctypes.c_float, ctypes.c_float, ctypes.c_float]
+    _lib.knob_set_value.restype = None
+    _lib.knob_set_value.argtypes = [ctypes.c_void_p, ctypes.c_float]
+    _lib.knob_get_value.restype = ctypes.c_float
+    _lib.knob_get_value.argtypes = [ctypes.c_void_p]
+    _lib.knob_set_colors.restype = None
+    _lib.knob_set_colors.argtypes = [ctypes.c_void_p, Color, Color, Color]
+
+    # WaveformView
+    _lib.waveform_view_new.restype = ctypes.c_void_p
+    _lib.waveform_view_new.argtypes = []
+    _lib.waveform_view_set_data.restype = None
+    _lib.waveform_view_set_data.argtypes = [ctypes.c_void_p,
+                                             ctypes.POINTER(ctypes.c_float),
+                                             ctypes.c_int]
+    _lib.waveform_view_set_colors.restype = None
+    _lib.waveform_view_set_colors.argtypes = [ctypes.c_void_p, Color, Color]
+
     return _lib
 
 
@@ -244,6 +267,11 @@ _control_set_size_flags = _load().control_set_size_flags
 _control_set_size_flags.restype = None
 _control_set_size_flags.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32]
 
+_control_set_rect = _load().control_set_rect
+_control_set_rect.restype = None
+_control_set_rect.argtypes = [ctypes.c_void_p, ctypes.c_float, ctypes.c_float,
+                               ctypes.c_float, ctypes.c_float]
+
 # Size flag constants
 SIZE_FILL = 1
 SIZE_EXPAND = 2
@@ -353,6 +381,8 @@ class DrawCmd(ctypes.Structure):
         ("text_len", ctypes.c_size_t),
         ("align", ctypes.c_uint32),
         ("clip_index", ctypes.c_int),
+        ("line_points", ctypes.c_void_p),
+        ("line_point_count", ctypes.c_size_t),
     ]
 
 
@@ -362,6 +392,8 @@ DRAW_CMD_TEXT = 2
 DRAW_CMD_TEXTURE = 3
 DRAW_CMD_CLIP_PUSH = 4
 DRAW_CMD_CLIP_POP = 5
+DRAW_CMD_LINE_STRIP = 6
+DRAW_CMD_CIRCLE_FILLED = 7
 
 _DRAW_CMD_NAMES = {
     0: "RECT_FILLED",
@@ -370,6 +402,8 @@ _DRAW_CMD_NAMES = {
     3: "TEXTURE",
     4: "CLIP_PUSH",
     5: "CLIP_POP",
+    6: "LINE_STRIP",
+    7: "CIRCLE_FILLED",
 }
 
 _draw_list_cmd_count = _load().draw_list_cmd_count
@@ -405,6 +439,8 @@ _button_class = _get_vtable("button_class")
 _label_class = _get_vtable("label_class")
 _panel_container_class = _get_vtable("panel_container_class")
 _line_edit_class = _get_vtable("line_edit_class")
+_knob_class = _get_vtable("knob_class")
+_waveform_view_class = _get_vtable("waveform_view_class")
 
 # ---------------------------------------------------------------------------
 # High-level Python wrappers
@@ -495,6 +531,10 @@ class Control(Node):
 
     def set_size_flags(self, h: int, v: int):
         _control_set_size_flags(self._ptr, h, v)
+
+    def set_rect(self, x: float, y: float, w: float, h: float):
+        """Directly set the Control's rect (for programmatic layout)."""
+        _control_set_rect(self._ptr, x, y, w, h)
 
 
 class ColorRect(Control):
@@ -654,15 +694,53 @@ class LineEdit(Control):
         _load().line_edit_set_editable(self._ptr, editable)
 
 
+class Knob(Control):
+    """A rotatable knob for adjusting continuous parameters.
+
+    Drag vertically to change the value.
+    Signal: value_changed(float)
+    """
+
+    def __init__(self):
+        ptr = _load().knob_new()
+        Node.__init__(self, ptr)
+        self.on_value_changed = self.get_signal("value_changed")
+
+    def set_range(self, min_val: float, max_val: float, step: float = 0.0):
+        _load().knob_set_range(self._ptr, min_val, max_val, step)
+
+    def set_value(self, value: float):
+        _load().knob_set_value(self._ptr, value)
+
+    def get_value(self) -> float:
+        return _load().knob_get_value(self._ptr)
+
+    def set_colors(self, knob: Color, indicator: Color, track: Color):
+        _load().knob_set_colors(self._ptr, knob, indicator, track)
+
+
 class SceneTree:
     """Orchestrates the UI frame loop."""
 
     def __init__(self):
         self._ptr = _scene_tree_create()
+        self._owned = True
 
     @property
     def ptr(self):
         return self._ptr
+
+    @classmethod
+    def from_ptr(cls, ptr):
+        """Wrap an existing SceneTree pointer without ownership.
+
+        Used for core-owned SceneTrees (e.g., from sol_get_scene_tree()).
+        The core engine manages the lifecycle.
+        """
+        tree = cls.__new__(cls)
+        tree._ptr = ptr
+        tree._owned = False
+        return tree
 
     def set_root(self, node: Node):
         _scene_tree_set_root(self._ptr, node._ptr)
@@ -705,6 +783,6 @@ class SceneTree:
                 print(f"  [{i}] {name}")
 
     def __del__(self):
-        if self._ptr:
+        if self._ptr and self._owned:
             _scene_tree_destroy(self._ptr)
             self._ptr = None

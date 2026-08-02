@@ -14,6 +14,7 @@ typedef struct {
     Node         *hovered_control;
     DrawList     *draw_list;
     DeferredQueue *deferred_queue;
+    Node         *drag_captured;   /* node that captured a mouse press */
     bool          layout_dirty;
     bool          tree_changing;
 } SceneTree;

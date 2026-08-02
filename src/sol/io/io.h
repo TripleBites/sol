@@ -26,6 +26,11 @@ typedef struct SolIO {
     /* Shared InputState — set by engine before first frame */
     InputState* input_state;
 
+    /* Render — called by core after SceneTree processes.
+       Receives the DrawList and window dimensions. Platform-specific:
+       SDL3 → Vulkan draw, TUI → ANSI terminal output, Headless → no-op */
+    void (*render)(void* draw_list, int width, int height);
+
     /* Audio (may be NULL) */
     bool (*audio_init)(int sample_rate, int channels,
                        SolAudioCallback callback, void* userdata);
@@ -37,6 +42,7 @@ typedef struct SolIO {
 /* --- Backend constructors --- */
 const SolIO* sol_io_sdl3(void);
 const SolIO* sol_io_headless(void);
+const SolIO* sol_io_tui(void);
 
 /* --- Hot-swap --- */
 void sol_io_set_active(SolIO* new_platform);

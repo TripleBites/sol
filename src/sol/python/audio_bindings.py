@@ -1,5 +1,6 @@
 """ctypes bindings for the Sol Audio system (AudioNode, AudioPipeline, etc.)."""
 import ctypes
+import os
 from sol.bindings import _load as _load_engine
 
 _lib = None
@@ -125,10 +126,27 @@ _audio_pipeline_probe_read.restype = ctypes.c_int
 _audio_pipeline_probe_read.argtypes = [ctypes.c_void_p, ctypes.c_int,
                                         ctypes.POINTER(ctypes.c_float), ctypes.c_int]
 
+# Offline rendering
+_audio_pipeline_render_offline = _load().audio_pipeline_render_offline
+_audio_pipeline_render_offline.restype = None
+_audio_pipeline_render_offline.argtypes = [
+    ctypes.c_void_p,
+    ctypes.POINTER(ctypes.c_float),
+    ctypes.c_int,
+]
+
 # Platform constructors (from io)
 _sol_io_headless = _load().sol_io_headless
 _sol_io_headless.restype = ctypes.c_void_p
 _sol_io_headless.argtypes = []
+
+_sol_io_sdl3 = _load().sol_io_sdl3
+_sol_io_sdl3.restype = ctypes.c_void_p
+_sol_io_sdl3.argtypes = []
+
+_sol_io_tui = _load().sol_io_tui
+_sol_io_tui.restype = ctypes.c_void_p
+_sol_io_tui.argtypes = []
 
 # ---------------------------------------------------------------------------
 # EnvelopeNode
@@ -172,6 +190,11 @@ _midi_to_freq.argtypes = [ctypes.c_int]
 _audio_node_add_child = _load().audio_node_add_child
 _audio_node_add_child.restype = None
 _audio_node_add_child.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+
+# Generic parameter getter (calls node's get_param function pointer)
+_audio_node_get_param_float = _load().audio_node_get_param_float
+_audio_node_get_param_float.restype = ctypes.c_float
+_audio_node_get_param_float.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
 
 # ---------------------------------------------------------------------------
 # Node name — reused from scene Node
@@ -285,8 +308,9 @@ class EnvelopeNode(AudioNode):
         _envelope_node_release(self._ptr)
 
     @classmethod
-    def adsr(cls, a=0.01, d=0.15, s=0.7, r=0.3, sr=44100):
-        return cls(a, d, s, r, sr)
+    def adsr(cls, attack=0.01, decay=0.15, sustain=0.7, release=0.3,
+             sample_rate=44100):
+        return cls(attack, decay, sustain, release, sample_rate)
 
 
 class VoiceNode(AudioNode):
@@ -340,11 +364,27 @@ class AudioPipeline:
         # Pipeline owns the tree — Python must not free nodes
         node._owned = True
 
-    def start(self):
-        """Start audio processing (headless ALSA mode)."""
+    def start(self, use_sdl3: bool = False, platform: str = ""):
+        """Start audio processing.
+        
+        Args:
+            use_sdl3: If True, use SDL3 audio (for GUI mode).
+            platform: "headless", "tui", or "" for auto-detect.
+                      Auto-detect checks SOL_BACKEND env var.
+        """
         if self._running:
             return
-        platform_ptr = _sol_io_headless()
+
+        # Determine platform
+        if use_sdl3:
+            platform_ptr = _sol_io_sdl3()
+        elif platform == "tui" or (not platform and os.environ.get("SOL_BACKEND") == "tui"):
+            platform_ptr = _sol_io_tui()
+        elif platform == "headless":
+            platform_ptr = _sol_io_headless()
+        else:
+            platform_ptr = _sol_io_headless()
+
         ok = _audio_pipeline_start(self._ptr, platform_ptr)
         if ok:
             self._running = True
@@ -379,6 +419,22 @@ class AudioPipeline:
         buf = (ctypes.c_float * max_samples)()
         n = _audio_pipeline_probe_read(self._ptr, probe_index, buf, max_samples)
         return list(buf[:n])
+
+    def render_offline(self, n_frames: int) -> list:
+        """Render N frames of audio offline (non-real-time).
+
+        Processes the audio graph without an audio device and returns
+        a list of float samples. Useful for WAV export.
+
+        Args:
+            n_frames: Number of sample frames to render.
+
+        Returns:
+            List of float samples in [-1.0, 1.0].
+        """
+        buf = (ctypes.c_float * n_frames)()
+        _audio_pipeline_render_offline(self._ptr, buf, n_frames)
+        return list(buf)
 
     def __del__(self):
         if self._ptr:

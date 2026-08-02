@@ -1,9 +1,6 @@
 #include "io.h"
 #include "../photon/photon_vulkan.h"
-#include "../scene/scene_tree.h"
-#include "../scene/control.h"
-#include "../scene/color_rect.h"
-#include "../scene/vbox_container.h"
+#include "../debug/logger.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
@@ -19,7 +16,6 @@ static VkInstance    g_instance;
 static VkSurfaceKHR  g_surface;
 static SolVulkan     g_vulkan;
 
-static SceneTree*    g_ui_tree;
 static bool          g_should_close;
 
 /* --- Audio state --- */
@@ -126,57 +122,13 @@ static bool sdl3_init(const char* title, int width, int height) {
         return false;
     }
 
-    /* --- Set up UI pipeline and scene --- */
+    /* --- Set up UI pipeline --- */
     if (!sol_vulkan_ui_setup(&g_vulkan)) {
         SDL_Log("sol_vulkan_ui_setup failed");
         return false;
     }
 
-    /* Build a demo UI scene */
-    g_ui_tree = scene_tree_create();
-    {
-        Control *root = control_new(&control_class);
-        node_set_name(&root->base, "root");
-        root->rect = rect_make(0, 0, (float)width, (float)height);
-        root->global_rect = root->rect;
-
-        /* Background */
-        ColorRect *bg = color_rect_new();
-        node_set_name(&bg->base.base, "bg");
-        color_rect_set_color(bg, color_rgba(0.05f, 0.05f, 0.15f, 1.0f));
-        node_add_child(&root->base, &bg->base.base);
-
-        /* Centered panel */
-        VBoxContainer *panel = vbox_container_new();
-        node_set_name(&panel->base.base, "panel");
-        control_set_anchor(&panel->base, 0.5f, 0.5f, 0.5f, 0.5f);
-        control_set_offset(&panel->base, -150, -200, 150, 200);
-        vbox_container_set_separation(panel, 8);
-
-        ColorRect *hdr = color_rect_new();
-        node_set_name(&hdr->base.base, "header");
-        color_rect_set_color(hdr, color_rgba(0.8f, 0.2f, 0.2f, 1.0f));
-        control_set_min_size(&hdr->base, 0, 80);
-        control_set_size_flags(&hdr->base, SIZE_FILL, 0);
-        node_add_child(&panel->base.base, &hdr->base.base);
-
-        ColorRect *body = color_rect_new();
-        node_set_name(&body->base.base, "body");
-        color_rect_set_color(body, color_rgba(0.2f, 0.7f, 0.2f, 1.0f));
-        control_set_size_flags(&body->base, SIZE_FILL, SIZE_EXPAND | SIZE_FILL);
-        node_add_child(&panel->base.base, &body->base.base);
-
-        ColorRect *ftr = color_rect_new();
-        node_set_name(&ftr->base.base, "footer");
-        color_rect_set_color(ftr, color_rgba(0.2f, 0.3f, 0.9f, 1.0f));
-        control_set_min_size(&ftr->base, 0, 60);
-        control_set_size_flags(&ftr->base, SIZE_FILL, 0);
-        node_add_child(&panel->base.base, &ftr->base.base);
-
-        node_add_child(&root->base, &panel->base.base);
-        scene_tree_set_root(g_ui_tree, &root->base);
-        node_unref(&root->base);  /* tree now owns the root */
-    }
+    /* SceneTree is owned by core.c — Python sets the root via sol_get_scene_tree() */
 
     g_should_close = false;
     SDL_Log("Sol Engine initialized: %s %dx%d", title, width, height);
@@ -187,10 +139,6 @@ static bool sdl3_init(const char* title, int width, int height) {
 /* Shutdown                                                            */
 /* ------------------------------------------------------------------ */
 static void sdl3_shutdown(void) {
-    if (g_ui_tree) {
-        scene_tree_destroy(g_ui_tree);
-        g_ui_tree = NULL;
-    }
     sol_vulkan_shutdown(&g_vulkan);
 
     /* Vulkan device / surface / instance are owned by us, not the renderer */
@@ -311,31 +259,21 @@ static void sdl3_poll_input(SolIO* self) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Update                                                              */
+/* Render + Update                                                     */
 /* ------------------------------------------------------------------ */
+
+/* Render a DrawList through the Vulkan 2D pipeline.
+   Called by core.c's sol_update() after SceneTree processing. */
+static void sdl3_render(void* draw_list, int width, int height) {
+    (void)width;
+    (void)height;
+    if (!draw_list) return;
+    g_vulkan.ui_draw_list = draw_list;
+    sol_vulkan_frame(&g_vulkan);
+}
+
 static bool sdl3_update(void) {
-    if (g_should_close) return false;
-
-    /* Process UI */
-    if (g_ui_tree) {
-        int w, h;
-        sol_vulkan_get_size(&g_vulkan, &w, &h);
-        /* Update root rect in case of resize */
-        if (g_ui_tree->root) {
-            Control *root = (Control*)g_ui_tree->root;
-            root->rect.w = (float)w;
-            root->rect.h = (float)h;
-            root->global_rect = root->rect;
-        }
-        scene_tree_process(g_ui_tree, 0.016f);
-        g_vulkan.ui_draw_list = scene_tree_get_draw_list(g_ui_tree);
-    }
-
-    if (!sol_vulkan_frame(&g_vulkan)) {
-        SDL_Log("sol_vulkan_frame failed");
-        return false;
-    }
-    return true;
+    return !g_should_close;
 }
 
 static void sdl3_get_size(int* w, int* h) {
@@ -459,6 +397,7 @@ static SolIO* sdl3_get_platform(void) {
     sdl3_platform.update         = sdl3_update;
     sdl3_platform.get_size       = sdl3_get_size;
     sdl3_platform.poll_input     = sdl3_poll_input;
+    sdl3_platform.render         = sdl3_render;
     sdl3_platform.audio_init     = sdl3_audio_init;
     sdl3_platform.audio_shutdown  = sdl3_audio_shutdown;
     sdl3_platform.audio_lock     = sdl3_audio_lock;

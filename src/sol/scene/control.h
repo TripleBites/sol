@@ -77,6 +77,9 @@ Vec2 control_get_min_size(const Control *c);
 void control_compute_rect_from_anchors(Control *c, Rect parent_rect);
 void control_compute_global_rect(Control *c, const Rect *parent_global);
 
+/* Direct rect setter — for programmatic positioning (TUI root setup) */
+void control_set_rect(Control *c, float x, float y, float w, float h);
+
 /* Get the Control's NodeClass (for subclass vtables) */
 extern const NodeClass control_class;
 

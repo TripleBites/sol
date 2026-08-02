@@ -129,3 +129,8 @@ void audio_node_set_id(AudioNode* an, uint32_t id) {
 uint32_t audio_node_get_id(AudioNode* an) {
     return an ? an->node_id : 0;
 }
+
+float audio_node_get_param_float(AudioNode* an, const char* name) {
+    if (!an || !an->get_param) return 0.0f;
+    return an->get_param(an, name);
+}

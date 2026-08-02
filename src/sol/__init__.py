@@ -37,6 +37,10 @@ sys.modules['sol.input_bindings'] = input_bindings
 from sol.python import photon_bindings
 sys.modules['sol.photon_bindings'] = photon_bindings
 
+# 7. tui_bindings (depends on bindings)
+from sol.python import tui_bindings
+sys.modules['sol.tui_bindings'] = tui_bindings
+
 # Public API
 from sol.python.sol import init, update, shutdown, get_size
 
