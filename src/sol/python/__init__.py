@@ -1,4 +1,4 @@
-"""Sol Engine - A C99 game engine with SDL3 + Vulkan, wrapped for Python."""
-from sol.sol import init, update, shutdown, get_size
+"""Sol Engine Python modules — organized under sol.python.* for internal use.
 
-__all__ = ["init", "update", "shutdown", "get_size"]
+Public API is re-exported at the package root (sol/__init__.py).
+"""

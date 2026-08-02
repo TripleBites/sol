@@ -101,6 +101,15 @@ static void vbox_arrange_children(Node *node) {
 
     float expand_share = (expand_count > 0) ? extra_h / expand_count : 0;
 
+    /* Find the index of the last visible child */
+    size_t last_visible = 0;
+    for (size_t i = node->child_count; i > 0; i--) {
+        if (node->children[i-1]->flags & NODE_FLAG_VISIBLE) {
+            last_visible = i - 1;
+            break;
+        }
+    }
+
     float y = 0;  /* children positions relative to container origin */
     for (size_t i = 0; i < node->child_count; i++) {
         Node *child = node->children[i];
@@ -118,8 +127,10 @@ static void vbox_arrange_children(Node *node) {
         if (cc->size_flags_v & SIZE_EXPAND) {
             child_h += expand_share;
         }
-        if (cc->size_flags_v & SIZE_FILL && !(cc->size_flags_v & SIZE_EXPAND)) {
-            /* FILL without EXPAND: take remaining space (only last child should use this) */
+        /* SIZE_FILL without EXPAND: only the last visible child gets the
+           remaining space; earlier children stay at minimum height. */
+        if ((cc->size_flags_v & SIZE_FILL) && !(cc->size_flags_v & SIZE_EXPAND)
+            && i == last_visible) {
             child_h = self->rect.h - y;
         }
 
@@ -145,14 +156,13 @@ static void vbox_arrange_children(Node *node) {
     }
 }
 
-/* --- Draw (container draws nothing, but draws children via tree traversal) --- */
+/* --- Draw (container itself is invisible; clipping is handled by draw_pass) --- */
 static void vbox_draw(Node *self, DrawList *dl) {
-    VBoxContainer *vb = (VBoxContainer*)self;
-    /* Container itself is invisible; children are drawn by scene tree traversal.
-       Just push/pop clip for any container-level styling. */
-    draw_list_push_clip(dl, vb->base.global_rect);
-    /* If we had a StyleBox background, we'd draw it here */
-    draw_list_pop_clip(dl);
+    (void)self;
+    (void)dl;
+    /* Container has no visual of its own.
+       Children are drawn by scene_tree's draw_pass pre-order traversal.
+       If/when we add StyleBox backgrounds, that drawing goes here. */
 }
 
 const NodeClass vbox_container_class = {

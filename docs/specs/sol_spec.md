@@ -1,6 +1,8 @@
 # Sol Engine Specification v1.0
 ## Python + C99 Game & Audio Engine Architecture
 
+> **TL;DR:** C99 engine with flat vtables + SDL3/Vulkan. Node = pure tree container (no spatial/audio state). Control = 2D UI via anchors + two-pass layout. AudioNode = real-time synth with control queue. Python ctypes bindings (hand-written, never generated). 3D-ready architecture, zero 3D code. Python is the editor.
+
 > **Design Philosophy:** Godot's scene tree and composition model, without Godot's binding-layer tax. C99 for the hot path, Python for the logic path, `ctypes` for zero-overhead interop. Flat vtables, not C++ inheritance. 2D-first with 3D-ready architecture.
 
 ---
@@ -102,10 +104,13 @@ struct Node {
 Node                              [tree, name, flags, refcount]
 ├── Control                       [rect, anchors, offsets, size_flags, theme]
 │   ├── ColorRect                 [color]
-│   ├── VBoxContainer             [separation, layout algorithm]
-│   ├── HBoxContainer             (planned)
-│   ├── Label                     (planned, depends on text/)
-│   ├── Button                    (planned)
+│   ├── VBoxContainer             [separation, vertical layout]
+│   ├── HBoxContainer             [separation, horizontal layout]
+│   ├── MarginContainer           [left/top/right/bottom margins]
+│   ├── CenterContainer           [centers single child]
+│   ├── PanelContainer            [StyleBox background + single child]
+│   ├── Label                     [text, font_size, align, autowrap, color]
+│   ├── Button                    [toggle_mode, hover/press states, signals]
 │   └── (...more widgets...)
 │
 ├── AudioNode                     [AudioPipeline context, probe ring buffer]
@@ -413,10 +418,10 @@ void sol_prof_dump_frame(void);  // print this frame's timing tree
 
 ## 9. Platform Layer — `src/sol/io/`
 
-### 9.1 SolPlatform
+### 9.1 SolIO
 
 ```c
-typedef struct SolPlatform {
+typedef struct SolIO {
     bool (*init)(const char* title, int w, int h);
     void (*shutdown)(void);
     bool (*update)(void);
@@ -428,7 +433,7 @@ typedef struct SolPlatform {
     void (*audio_shutdown)(void);
     void (*audio_lock)(void);
     void (*audio_unlock)(void);
-} SolPlatform;
+} SolIO;
 ```
 
 ### 9.2 Backends
@@ -538,6 +543,7 @@ sol/
 │   │   │   └── io.c              ← headless: ALSA audio
 │   │   ├── photon/               ← Vulkan renderer
 │   │   │   ├── photon_vulkan.h/c
+│   │   │   ├── render2d.h/c       ← 2D batch renderer
 │   │   │   └── photon.h
 │   │   ├── scene/                ← 2D retained-mode UI
 │   │   │   ├── node.h/c          ← base Node + vtable
@@ -545,7 +551,17 @@ sol/
 │   │   │   ├── draw_list.h/c     ← renderer-agnostic draw commands
 │   │   │   ├── scene_tree.h/c    ← frame orchestrator
 │   │   │   ├── color_rect.h/c    ← colored rectangle widget
-│   │   │   └── vbox_container.h/c← vertical layout container
+│   │   │   ├── vbox_container.h/c← vertical layout
+│   │   │   ├── hbox_container.h/c← horizontal layout
+│   │   │   ├── margin_container.h/c ← padding
+│   │   │   ├── center_container.h/c ← centering
+│   │   │   ├── panel_container.h/c  ← StyleBox background
+│   │   │   ├── label.h/c         ← text widget
+│   │   │   ├── button.h/c        ← clickable button
+│   │   │   ├── signal.h/c        ← signal/connection system
+│   │   │   ├── style_box.h/c     ← background/border drawing
+│   │   │   ├── variant.h         ← discriminated union for signal args
+│   │   │   └── input_event.h     ← UI input event types
 │   │   ├── audio/                ← audio synthesis nodes (PHASE 1)
 │   │   │   ├── audio_node.h/c    ← AudioNode base type
 │   │   │   ├── pipeline.h/c      ← AudioPipeline + control queue
@@ -568,11 +584,12 @@ sol/
 │   │   ├── spatial2d/            ← [future] 2D world nodes
 │   │   └── shaders/              ← SPIR-V assembly sources
 │   └── sol/                      ← Python package
-│       ├── __init__.py
-│       ├── bindings.py           ← ctypes engine bindings
-│       ├── ui_bindings.py        ← ctypes UI bindings
-│       ├── audio_bindings.py     ← ctypes audio bindings
-│       └── sol.py                ← public API re-exports
+│       ├── __init__.py            ← package loader
+│       ├── bindings.py            ← ctypes engine bindings
+│       ├── ui_bindings.py         ← ctypes UI bindings
+│       ├── audio_bindings.py      ← ctypes audio bindings
+│       ├── input_bindings.py      ← ctypes input bindings
+│       └── sol.py                 ← public API re-exports
 ├── neptune/                      ← Python synth composer layer
 │   ├── main.py
 │   ├── gui/synth_panel.py

@@ -1,6 +1,6 @@
 """Python ctypes bindings for the Sol UI system.
 
-Wraps the C99 retained-mode UI engine (Godot-inspired) at src/engine/ui/.
+Wraps the C99 retained-mode UI engine (Godot-inspired) at src/sol/scene/.
 """
 import ctypes
 from sol.bindings import _load as _load_engine
@@ -13,6 +13,71 @@ def _load():
     if _lib is not None:
         return _lib
     _lib = _load_engine()  # reuse the same libsol.so
+
+    # Signal API
+    _lib.node_add_signal.restype = ctypes.c_void_p
+    _lib.node_add_signal.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+    _lib.node_emit_signal.restype = None
+    _lib.node_emit_signal.argtypes = [ctypes.c_void_p, ctypes.c_char_p,
+                                       ctypes.c_void_p, ctypes.c_size_t]
+    _lib.signal_connect.restype = ctypes.c_int
+    _lib.signal_connect.argtypes = [ctypes.c_void_p, ctypes.c_void_p,
+                                     ctypes.c_void_p, ctypes.c_int]
+    _lib.signal_disconnect.restype = None
+    _lib.signal_disconnect.argtypes = [ctypes.c_void_p, ctypes.c_int]
+
+    # SceneTree input
+    _lib.scene_tree_input.restype = None
+    _lib.scene_tree_input.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+
+    # Button
+    _lib.button_new.restype = ctypes.c_void_p
+    _lib.button_new.argtypes = []
+    _lib.button_set_colors.restype = None
+    _lib.button_set_colors.argtypes = [ctypes.c_void_p, Color, Color, Color]
+    _lib.button_set_toggle_mode.restype = None
+    _lib.button_set_toggle_mode.argtypes = [ctypes.c_void_p, ctypes.c_bool]
+    _lib.button_set_toggled.restype = None
+    _lib.button_set_toggled.argtypes = [ctypes.c_void_p, ctypes.c_bool]
+    _lib.button_is_toggled.restype = ctypes.c_bool
+    _lib.button_is_toggled.argtypes = [ctypes.c_void_p]
+
+    # Label
+    _lib.label_new.restype = ctypes.c_void_p
+    _lib.label_new.argtypes = []
+    _lib.label_set_text.restype = None
+    _lib.label_set_text.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+    _lib.label_set_font_size.restype = None
+    _lib.label_set_font_size.argtypes = [ctypes.c_void_p, ctypes.c_float]
+    _lib.label_set_align.restype = None
+    _lib.label_set_align.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+    _lib.label_set_font_color.restype = None
+    _lib.label_set_font_color.argtypes = [ctypes.c_void_p, Color]
+
+    # PanelContainer
+    _lib.panel_container_new.restype = ctypes.c_void_p
+    _lib.panel_container_new.argtypes = []
+
+    # LineEdit
+    _lib.line_edit_new.restype = ctypes.c_void_p
+    _lib.line_edit_new.argtypes = []
+    _lib.line_edit_set_text.restype = None
+    _lib.line_edit_set_text.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+    _lib.line_edit_get_text.restype = ctypes.c_char_p
+    _lib.line_edit_get_text.argtypes = [ctypes.c_void_p]
+    _lib.line_edit_set_placeholder.restype = None
+    _lib.line_edit_set_placeholder.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+    _lib.line_edit_set_max_length.restype = None
+    _lib.line_edit_set_max_length.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
+    _lib.line_edit_set_secret.restype = None
+    _lib.line_edit_set_secret.argtypes = [ctypes.c_void_p, ctypes.c_bool]
+    _lib.line_edit_set_editable.restype = None
+    _lib.line_edit_set_editable.argtypes = [ctypes.c_void_p, ctypes.c_bool]
+
+    # Theme
+    _lib.theme_create_default.restype = ctypes.c_void_p
+    _lib.theme_create_default.argtypes = []
+
     return _lib
 
 
@@ -39,6 +104,85 @@ class Color(ctypes.Structure):
         ("b", ctypes.c_float),
         ("a", ctypes.c_float),
     ]
+
+
+# ---------------------------------------------------------------------------
+# Variant (for signal arguments)
+# ---------------------------------------------------------------------------
+VAR_NIL = 0
+VAR_BOOL = 1
+VAR_INT = 2
+VAR_FLOAT = 3
+VAR_STRING = 4
+VAR_VEC2 = 5
+VAR_RECT = 6
+VAR_COLOR = 7
+
+
+class Variant(ctypes.Structure):
+    _fields_ = [
+        ("type", ctypes.c_int),
+        ("_b", ctypes.c_bool),
+        ("_i", ctypes.c_int64),
+        ("_f", ctypes.c_double),
+        ("_s", ctypes.c_char_p),
+        ("_v2", Vec2),
+        ("_r", Rect),
+        ("_c", Color),
+    ]
+
+
+# ---------------------------------------------------------------------------
+# UIInputEvent
+# ---------------------------------------------------------------------------
+UI_EV_MOUSE_MOTION = 0
+UI_EV_MOUSE_BUTTON = 1
+UI_EV_MOUSE_SCROLL = 2
+UI_EV_KEY = 3
+UI_EV_TEXT = 4
+UI_EV_FOCUS_ENTER = 5
+UI_EV_FOCUS_EXIT = 6
+
+
+class UIInputEvent(ctypes.Structure):
+    _fields_ = [
+        ("type", ctypes.c_int),
+        ("pos", Vec2),
+        ("delta", Vec2),
+        ("button", ctypes.c_int),
+        ("pressed", ctypes.c_bool),
+        ("keycode", ctypes.c_int),
+        ("unicode", ctypes.c_int),
+        ("alt", ctypes.c_bool),
+        ("shift", ctypes.c_bool),
+        ("ctrl", ctypes.c_bool),
+        ("meta", ctypes.c_bool),
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Signal callback type (ctypes function pointer)
+# ---------------------------------------------------------------------------
+# We use a module-level trampoline (not a closure) to avoid GC issues.
+# Python callables are stored by integer ID; userdata carries the ID.
+_signal_callbacks = {}   # id → callable
+_signal_next_id = 0
+
+
+def _signal_trampoline(emitter_ptr, args_ptr, arg_count, userdata):
+    """C-callable trampoline. userdata is an integer ID into _signal_callbacks."""
+    cb = _signal_callbacks.get(userdata)
+    if cb:
+        cb()
+
+
+SIGNAL_CALLBACK = ctypes.CFUNCTYPE(
+    None,
+    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t,
+    ctypes.c_void_p,              # userdata as void* (carries int ID)
+)
+
+_c_signal_trampoline = SIGNAL_CALLBACK(_signal_trampoline)
 
 
 # ---------------------------------------------------------------------------
@@ -133,6 +277,41 @@ _vbox_container_set_separation.argtypes = [ctypes.c_void_p, ctypes.c_float]
 
 
 # ---------------------------------------------------------------------------
+# HBoxContainer
+# ---------------------------------------------------------------------------
+_hbox_container_new = _load().hbox_container_new
+_hbox_container_new.restype = ctypes.c_void_p
+_hbox_container_new.argtypes = []
+
+_hbox_container_set_separation = _load().hbox_container_set_separation
+_hbox_container_set_separation.restype = None
+_hbox_container_set_separation.argtypes = [ctypes.c_void_p, ctypes.c_float]
+
+
+# ---------------------------------------------------------------------------
+# MarginContainer
+# ---------------------------------------------------------------------------
+_margin_container_new = _load().margin_container_new
+_margin_container_new.restype = ctypes.c_void_p
+_margin_container_new.argtypes = []
+
+_margin_container_set_margin = _load().margin_container_set_margin
+_margin_container_set_margin.restype = None
+_margin_container_set_margin.argtypes = [
+    ctypes.c_void_p, ctypes.c_float, ctypes.c_float,
+    ctypes.c_float, ctypes.c_float
+]
+
+
+# ---------------------------------------------------------------------------
+# CenterContainer
+# ---------------------------------------------------------------------------
+_center_container_new = _load().center_container_new
+_center_container_new.restype = ctypes.c_void_p
+_center_container_new.argtypes = []
+
+
+# ---------------------------------------------------------------------------
 # SceneTree
 # ---------------------------------------------------------------------------
 _scene_tree_create = _load().scene_tree_create
@@ -219,19 +398,51 @@ def _get_vtable(name):
 _control_class = _get_vtable("control_class")
 _color_rect_class = _get_vtable("color_rect_class")
 _vbox_container_class = _get_vtable("vbox_container_class")
+_hbox_container_class = _get_vtable("hbox_container_class")
+_margin_container_class = _get_vtable("margin_container_class")
+_center_container_class = _get_vtable("center_container_class")
+_button_class = _get_vtable("button_class")
+_label_class = _get_vtable("label_class")
+_panel_container_class = _get_vtable("panel_container_class")
+_line_edit_class = _get_vtable("line_edit_class")
 
 # ---------------------------------------------------------------------------
 # High-level Python wrappers
 # ---------------------------------------------------------------------------
 
 
-class Node:
-    """Python wrapper for a C Node pointer."""
-
+class Signal:
+    """A signal on a Node. Created via node.add_signal() or node.get_signal()."""
     __slots__ = ("_ptr",)
 
     def __init__(self, ptr):
         self._ptr = ptr
+
+    def connect(self, callback):
+        """Connect a Python callable. Returns an integer connection ID.
+        The callback receives no arguments for now."""
+        global _signal_next_id
+        _signal_next_id += 1
+        ref_id = _signal_next_id
+        _signal_callbacks[ref_id] = callback
+
+        conn_id = _load().signal_connect(
+            self._ptr, _c_signal_trampoline, ref_id, 0)
+        return conn_id
+
+    def disconnect(self, conn_id: int):
+        """Disconnect a previously connected callback."""
+        _load().signal_disconnect(self._ptr, conn_id)
+
+
+class Node:
+    """Python wrapper for a C Node pointer."""
+
+    __slots__ = ("_ptr", "_owned")
+
+    def __init__(self, ptr, owned=True):
+        self._ptr = ptr
+        self._owned = owned
 
     @property
     def ptr(self):
@@ -243,8 +454,24 @@ class Node:
     def set_name(self, name: str):
         _node_set_name(self._ptr, name.encode("utf-8"))
 
+    def add_signal(self, name: str) -> Signal:
+        """Register a signal on this node. Returns a Signal object."""
+        sig_ptr = _load().node_add_signal(self._ptr, name.encode("utf-8"))
+        return Signal(sig_ptr)
+
+    def get_signal(self, name: str) -> Signal | None:
+        """Get a Signal by name. Returns None if not found."""
+        sig_ptr = _load().node_add_signal(self._ptr, name.encode("utf-8"))
+        if sig_ptr:
+            return Signal(sig_ptr)
+        return None
+
+    def emit_signal(self, name: str):
+        """Emit a signal by name. All connections are called immediately."""
+        _load().node_emit_signal(self._ptr, name.encode("utf-8"), None, 0)
+
     def __del__(self):
-        if self._ptr:
+        if self._ptr and self._owned:
             _node_unref(self._ptr)
             self._ptr = None
 
@@ -294,6 +521,139 @@ class VBoxContainer(Control):
         _vbox_container_set_separation(self._ptr, px)
 
 
+class HBoxContainer(Control):
+    """Horizontal box container."""
+
+    def __init__(self):
+        ptr = _hbox_container_new()
+        Node.__init__(self, ptr)
+
+    def set_separation(self, px: float):
+        _hbox_container_set_separation(self._ptr, px)
+
+
+class MarginContainer(Control):
+    """Container that adds padding/margin around a single child."""
+
+    def __init__(self):
+        ptr = _margin_container_new()
+        Node.__init__(self, ptr)
+
+    def set_margin(self, left: float, top: float, right: float, bottom: float):
+        _margin_container_set_margin(self._ptr, left, top, right, bottom)
+
+
+class CenterContainer(Control):
+    """Container that centers its child."""
+
+    def __init__(self):
+        ptr = _center_container_new()
+        Node.__init__(self, ptr)
+
+
+class Button(Control):
+    """A clickable button with signals: pressed, toggled, button_down, button_up."""
+
+    def __init__(self):
+        ptr = _load().button_new()
+        Node.__init__(self, ptr)
+        # Signal handles cached for convenience
+        self.on_pressed = self.get_signal("pressed")
+        self.on_toggled = self.get_signal("toggled")
+        self.on_button_down = self.get_signal("button_down")
+        self.on_button_up = self.get_signal("button_up")
+
+    def set_colors(self, normal: Color, hover: Color, pressed: Color):
+        _load().button_set_colors(self._ptr, normal, hover, pressed)
+
+    def set_toggle_mode(self, enabled: bool):
+        _load().button_set_toggle_mode(self._ptr, enabled)
+
+    def set_toggled(self, toggled: bool):
+        _load().button_set_toggled(self._ptr, toggled)
+
+    def is_toggled(self) -> bool:
+        return _load().button_is_toggled(self._ptr)
+
+
+class Label(Control):
+    """A text label widget.
+    
+    Font rendering requires stb_truetype (Phase 3). For now, labels
+    emit DRAW_CMD_TEXT commands that the renderer backend handles.
+    """
+
+    # Alignment constants
+    ALIGN_LEFT   = 0
+    ALIGN_CENTER = 1
+    ALIGN_RIGHT  = 2
+    ALIGN_TOP    = 0
+    ALIGN_MIDDLE = 4
+    ALIGN_BOTTOM = 8
+
+    def __init__(self, text: str = ""):
+        ptr = _load().label_new()
+        Node.__init__(self, ptr)
+        if text:
+            self.set_text(text)
+
+    def set_text(self, text: str):
+        _load().label_set_text(self._ptr, text.encode("utf-8"))
+
+    def set_font_size(self, size: float):
+        _load().label_set_font_size(self._ptr, size)
+
+    def set_align(self, align: int):
+        _load().label_set_align(self._ptr, align)
+
+    def set_font_color(self, r: float, g: float, b: float, a: float = 1.0):
+        c = Color(r, g, b, a)
+        _load().label_set_font_color(self._ptr, c)
+
+
+class PanelContainer(Control):
+    """Container that draws a StyleBox background and arranges its
+    single child inside the StyleBox's inner area."""
+
+    def __init__(self):
+        ptr = _load().panel_container_new()
+        Node.__init__(self, ptr)
+
+
+class LineEdit(Control):
+    """Single-line text input field.
+
+    Signals: text_changed, text_submitted
+    """
+
+    def __init__(self, text: str = ""):
+        ptr = _load().line_edit_new()
+        Node.__init__(self, ptr)
+        self.on_text_changed = self.get_signal("text_changed")
+        self.on_text_submitted = self.get_signal("text_submitted")
+        if text:
+            self.set_text(text)
+
+    def set_text(self, text: str):
+        _load().line_edit_set_text(self._ptr, text.encode("utf-8"))
+
+    def get_text(self) -> str:
+        result = _load().line_edit_get_text(self._ptr)
+        return result.decode("utf-8") if result else ""
+
+    def set_placeholder(self, text: str):
+        _load().line_edit_set_placeholder(self._ptr, text.encode("utf-8"))
+
+    def set_max_length(self, max_len: int):
+        _load().line_edit_set_max_length(self._ptr, max_len)
+
+    def set_secret(self, secret: bool):
+        _load().line_edit_set_secret(self._ptr, secret)
+
+    def set_editable(self, editable: bool):
+        _load().line_edit_set_editable(self._ptr, editable)
+
+
 class SceneTree:
     """Orchestrates the UI frame loop."""
 
@@ -310,6 +670,10 @@ class SceneTree:
     def process(self, delta: float = 0.016):
         """Run one frame: process → layout → draw."""
         _scene_tree_process(self._ptr, delta)
+
+    def input(self, ev: UIInputEvent):
+        """Route an input event through the UI tree."""
+        _load().scene_tree_input(self._ptr, ctypes.byref(ev))
 
     def get_draw_list(self):
         """Get the raw DrawList pointer (for inspection)."""

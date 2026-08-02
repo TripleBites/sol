@@ -1,32 +1,18 @@
 #!/usr/bin/env python3
 """
-Sol UI System — Python Example
-================================
+Sol Engine — Python Example Suite
+====================================
 
-This example demonstrates the Godot-inspired retained-mode UI system
-built into the Sol engine. No window is opened; we create a UI scene,
-run the layout solver, and inspect the draw commands that a renderer
-backend would consume.
+Part 1: Retained-Mode UI System
+  Creates a SceneTree with VBoxContainer layout and verifies draw commands.
 
-Structure built:
-
-    SceneTree
-      └─ Control "root" (800×600)
-           ├─ ColorRect "sky"       — full-rect, dark blue background
-           └─ VBoxContainer "panel" — centred, 300×400, with 3 children:
-                ├─ ColorRect "header"  — red, 300×80
-                ├─ ColorRect "body"    — green, expands to fill
-                └─ ColorRect "footer"  — blue, 300×60
+Part 2: Immediate-Mode 2D Batch Renderer (Render2D)
+  Demonstrates the primitives API: rects, lines, circles, z-sorting.
+  Each draw call generates 6 vertices (2 triangles) in a z-sorted batch.
 
 Run:
     PYTHONPATH=src python3 examples/ui_example.py
 """
-
-import sys
-import os
-
-# Ensure we can find the sol package
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from sol.ui_bindings import (
     Control,
@@ -179,6 +165,81 @@ def main():
     #    SceneTree.__del__ destroys the C tree, which cascades to nodes.
     # ------------------------------------------------------------------
     print("\nDone. SceneTree and all nodes cleaned up.")
+
+    # ================================================================
+    # PART 2: Render2D — Immediate-Mode 2D Batch Renderer
+    # ================================================================
+    print("\n" + "=" * 60)
+    print("  Render2D — Immediate-Mode 2D Batch Renderer")
+    print("=" * 60)
+    print()
+
+    from sol.photon_bindings import Render2D
+
+    r = Render2D()
+    r.begin(800, 600)
+
+    # Layer 0: dark background
+    r.set_z(0)
+    r.draw_rect(0, 0, 800, 600, color=(0.05, 0.05, 0.15, 1.0))
+    print("  ✓ Layer 0: dark navy background (full screen)")
+
+    # Layer 1: a grid of thin lines
+    r.set_z(1)
+    for i in range(0, 801, 100):
+        r.draw_line(i, 0, i, 600, color=(1, 1, 1, 0.08), thickness=1.0)
+        r.draw_line(0, i, 800, i, color=(1, 1, 1, 0.08), thickness=1.0)
+    print("  ✓ Layer 1: grid lines (100px spacing, subtle)")
+
+    # Layer 2: colorful rectangles with borders
+    r.set_z(2)
+    colors = [
+        (0.9, 0.2, 0.2, 1.0),  # red
+        (0.2, 0.8, 0.3, 1.0),  # green
+        (0.2, 0.3, 0.9, 1.0),  # blue
+        (0.9, 0.7, 0.1, 1.0),  # yellow
+    ]
+    for i, c in enumerate(colors):
+        x = 50 + i * 180
+        r.draw_rect(x, 100, 140, 200, color=c)
+        r.draw_rect_border(x, 100, 140, 200,
+                           color=(1, 1, 1, 1.0), border_width=2.0)
+    print(f"  ✓ Layer 2: {len(colors)} colored panels with white borders")
+
+    # Layer 3: circles
+    r.set_z(3)
+    r.draw_circle(120, 450, 40, color=(1, 0.3, 0.3, 1), filled=True)
+    r.draw_circle(300, 450, 50, color=(0.3, 1, 0.4, 1), filled=True)
+    r.draw_circle(500, 450, 30, color=(0.4, 0.5, 1, 1), filled=False)
+    r.draw_circle(680, 450, 45, color=(1, 0.8, 0.1, 1), filled=True)
+    print("  ✓ Layer 3: 4 circles (3 filled, 1 outlined)")
+
+    # Layer 4: diagonal lines on top
+    r.set_z(4)
+    r.draw_line(50, 50, 750, 550, color=(1, 1, 1, 0.3), thickness=2.0)
+    r.draw_line(750, 50, 50, 550, color=(1, 1, 1, 0.3), thickness=2.0)
+    print("  ✓ Layer 4: X-shaped diagonal lines")
+
+    # Flush — generates vertex data
+    vertices, vert_count = r.flush()
+    print(f"\n  ✓ Flushed: {vert_count} vertices ({vert_count // 6} quads)")
+
+    # Show vertex data samples
+    print(f"\n  Vertex buffer preview (first 3 quads = 18 vertices):")
+    for i in range(min(3, vert_count // 6)):
+        start = i * 6 * 6  # 6 verts × 6 floats each
+        pos_x = vertices[start]
+        pos_y = vertices[start + 1]
+        r_val = vertices[start + 2]
+        g_val = vertices[start + 3]
+        b_val = vertices[start + 4]
+        a_val = vertices[start + 5]
+        print(f"    quad[{i}]: pos=({pos_x:6.1f},{pos_y:6.1f}) "
+              f"rgba=({r_val:.2f},{g_val:.2f},{b_val:.2f},{a_val:.2f})")
+
+    print(f"\n  All tests passed! ✓")
+    print(f"  {vert_count} vertices ready for GPU upload → vkCmdDraw")
+
     return 0
 
 

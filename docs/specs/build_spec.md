@@ -1,5 +1,7 @@
 # Build System Specification v3.0
 
+> **TL;DR:** `scripts/build.py` compiles C99 → `libsol.so`. SPIR-V shaders assembled via `spirv-as` + embedded as C arrays. Targets: Linux (SDL3+Vulkan), Raspberry Pi (ALSA headless), Windows, Android. Dependencies: SDL3, Vulkan SDK, spirv-tools, Python 3.10+.
+
 **Targets:** Linux (x86_64), Raspberry Pi (arm64), Windows (x86_64), Android (arm64)
 
 ---
@@ -20,6 +22,9 @@
 | SceneTree | `src/sol/scene/scene_tree.h`, `src/sol/scene/scene_tree.c` |
 | ColorRect | `src/sol/scene/color_rect.h`, `src/sol/scene/color_rect.c` |
 | VBoxContainer | `src/sol/scene/vbox_container.h`, `src/sol/scene/vbox_container.c` |
+| HBoxContainer | `src/sol/scene/hbox_container.h`, `src/sol/scene/hbox_container.c` |
+| MarginContainer | `src/sol/scene/margin_container.h`, `src/sol/scene/margin_container.c` |
+| CenterContainer | `src/sol/scene/center_container.h`, `src/sol/scene/center_container.c` |
 | Math types | `src/sol/scene/types.h` |
 | Audio system *(Phase 1)* | `src/sol/audio/` |
 | Text system *(Phase 3)* | `src/sol/text/` |
@@ -27,7 +32,7 @@
 
 ---
 
-## 2. Build Script (`scripts/build_engine.py`)
+## 2. Build Script (`scripts/build.py`)
 
 ### 2.1 Shader Assembly
 
@@ -88,10 +93,10 @@ File modification timestamps checked. If `libsol.so` is newer than all sources, 
 
 ```bash
 # Full build
-python3 scripts/build_engine.py
+python3 scripts/build.py
 
 # Rebuild from clean
-rm -f src/sol/python/libsol.so && python3 scripts/build_engine.py
+rm -f src/sol/python/libsol.so && python3 scripts/build.py
 
 # Run with local engine
 PYTHONPATH=src python3 game/main.py

@@ -3,6 +3,7 @@
 
 #include "node.h"
 #include "draw_list.h"
+#include "theme.h"
 
 /* --- Size flags (bitmask) --- */
 #define SIZE_FILL           (1u << 0)
@@ -50,7 +51,7 @@ typedef struct {
     uint32_t size_flags_v;
 
     /* Theming */
-    void  *theme;        /* Theme* - forward declared as void* for now */
+    Theme *theme;        /* Strong ref to custom theme; NULL = inherit */
 
     /* Input */
     uint8_t mouse_filter;
@@ -75,9 +76,6 @@ void control_set_size_flags(Control *c, uint32_t h, uint32_t v);
 Vec2 control_get_min_size(const Control *c);
 void control_compute_rect_from_anchors(Control *c, Rect parent_rect);
 void control_compute_global_rect(Control *c, const Rect *parent_global);
-
-/* Draw hook (called by SceneTree) */
-void control_draw(Control *c, DrawList *dl);
 
 /* Get the Control's NodeClass (for subclass vtables) */
 extern const NodeClass control_class;

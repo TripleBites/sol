@@ -1,6 +1,8 @@
 # Neptune Audio Synthesizer — Specification v2.0
 ## Python Composition Layer over Sol Audio Engine
 
+> **TL;DR:** Thin Python layer over Sol's C audio engine. Composes AudioNode trees (VoiceNode→Osc+Envelope→Mixer→Gain), routes QWERTY/MIDI input to control queue, polls probe ring buffers for GUI waveforms, saves/loads .solpatch JSON. ~500 lines of Python. Hot audio path stays in C99.
+
 > **Neptune is a thin Python composition layer.** It creates `AudioNode` trees from the Sol C99 engine, routes input (keyboard, MIDI) to `AudioPipeline` control messages, reads probe ring buffers for GUI waveform display, and serializes/deserializes patches. The hot audio path is C. The logic and composition is Python.
 
 ---

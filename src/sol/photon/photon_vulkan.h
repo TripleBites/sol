@@ -68,6 +68,10 @@ typedef struct SolVulkan {
     VkDeviceMemory    ui_vertex_memory;
     uint32_t          ui_vertex_count;
     const void*       ui_draw_list;  /* set by platform before frame */
+
+    /* 2D batch renderer */
+    void*             render2d;
+    uint32_t          render2d_vertex_count;
 } SolVulkan;
 
 /* Initialize all Vulkan rendering state. Returns false on failure. */
@@ -105,5 +109,9 @@ bool sol_vulkan_ui_setup(SolVulkan* vk);
    Must be called between vkBeginCommandBuffer/vkEndCommandBuffer,
    inside a render pass. */
 void sol_vulkan_ui_draw(SolVulkan* vk, VkCommandBuffer cmd, const struct DrawList* dl);
+
+/* 2D batch renderer setup and drawing */
+bool sol_vulkan_2d_setup(SolVulkan* vk);
+void sol_vulkan_2d_flush(SolVulkan* vk, VkCommandBuffer cmd);
 
 #endif /* SOL_IO_VULKAN_H */

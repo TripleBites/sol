@@ -1,12 +1,13 @@
 #include "io.h"
-#include "io_vulkan.h"
-#include "../ui/scene_tree.h"
-#include "../ui/control.h"
-#include "../ui/color_rect.h"
-#include "../ui/vbox_container.h"
+#include "../photon/photon_vulkan.h"
+#include "../scene/scene_tree.h"
+#include "../scene/control.h"
+#include "../scene/color_rect.h"
+#include "../scene/vbox_container.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
+#include <SDL3/SDL_audio.h>
 #include <vulkan/vulkan.h>
 
 #include <stdio.h>
@@ -20,6 +21,12 @@ static SolVulkan     g_vulkan;
 
 static SceneTree*    g_ui_tree;
 static bool          g_should_close;
+
+/* --- Audio state --- */
+static SDL_AudioDeviceID  g_audio_device = 0;
+static SolAudioCallback    g_audio_callback;
+static void*               g_audio_userdata;
+static SDL_AudioStream*    g_audio_stream;
 
 /* ------------------------------------------------------------------ */
 /* Init                                                                */
@@ -197,27 +204,116 @@ static void sdl3_shutdown(void) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Update                                                              */
+/* Input — pump SDL events directly into InputState                    */
 /* ------------------------------------------------------------------ */
-static void handle_events(void) {
+
+static int sdl_scancode_to_sol(SDL_Scancode sc) {
+    if (sc >= SDL_SCANCODE_A && sc <= SDL_SCANCODE_Z)
+        return SOL_KEY_A + (sc - SDL_SCANCODE_A);
+    if (sc >= SDL_SCANCODE_1 && sc <= SDL_SCANCODE_9)
+        return SOL_KEY_1 + (sc - SDL_SCANCODE_1);
+    if (sc == SDL_SCANCODE_0) return SOL_KEY_0;
+    switch (sc) {
+    case SDL_SCANCODE_RETURN:    return SOL_KEY_RETURN;
+    case SDL_SCANCODE_ESCAPE:    return SOL_KEY_ESCAPE;
+    case SDL_SCANCODE_BACKSPACE: return SOL_KEY_BACKSPACE;
+    case SDL_SCANCODE_TAB:       return SOL_KEY_TAB;
+    case SDL_SCANCODE_SPACE:     return SOL_KEY_SPACE;
+    case SDL_SCANCODE_LEFT:      return SOL_KEY_LEFT;
+    case SDL_SCANCODE_RIGHT:     return SOL_KEY_RIGHT;
+    case SDL_SCANCODE_UP:        return SOL_KEY_UP;
+    case SDL_SCANCODE_DOWN:      return SOL_KEY_DOWN;
+    case SDL_SCANCODE_LSHIFT:    return SOL_KEY_LSHIFT;
+    case SDL_SCANCODE_RSHIFT:    return SOL_KEY_RSHIFT;
+    case SDL_SCANCODE_LCTRL:     return SOL_KEY_LCTRL;
+    case SDL_SCANCODE_RCTRL:     return SOL_KEY_RCTRL;
+    case SDL_SCANCODE_LALT:      return SOL_KEY_LALT;
+    case SDL_SCANCODE_RALT:      return SOL_KEY_RALT;
+    default: return SOL_KEY_UNKNOWN;
+    }
+}
+
+static void sdl3_poll_input(SolIO* self) {
+    InputState* s = self->input_state;
+    if (!s) return;
+
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
         switch (e.type) {
         case SDL_EVENT_QUIT:
+            s->should_quit = true;
             g_should_close = true;
             break;
-        case SDL_EVENT_WINDOW_RESIZED:
-        case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
-            sol_vulkan_signal_resize(&g_vulkan);
+
+        case SDL_EVENT_KEY_DOWN:
+            input_state_key_down(s, sdl_scancode_to_sol(e.key.scancode));
             break;
+
+        case SDL_EVENT_KEY_UP:
+            input_state_key_up(s, sdl_scancode_to_sol(e.key.scancode));
+            break;
+
+        case SDL_EVENT_MOUSE_MOTION:
+            input_state_mouse_move(s, e.motion.x, e.motion.y);
+            break;
+
+        case SDL_EVENT_MOUSE_BUTTON_DOWN:
+            input_state_mouse_button(s, e.button.button, true);
+            break;
+
+        case SDL_EVENT_MOUSE_BUTTON_UP:
+            input_state_mouse_button(s, e.button.button, false);
+            break;
+
+        case SDL_EVENT_MOUSE_WHEEL:
+            input_state_mouse_scroll(s, e.wheel.x, e.wheel.y);
+            break;
+
+        case SDL_EVENT_FINGER_DOWN:
+            input_state_touch(s, (int)e.tfinger.fingerID, true,
+                              e.tfinger.x, e.tfinger.y);
+            break;
+
+        case SDL_EVENT_FINGER_UP:
+            input_state_touch(s, (int)e.tfinger.fingerID, false,
+                              e.tfinger.x, e.tfinger.y);
+            break;
+
+        case SDL_EVENT_FINGER_MOTION:
+            input_state_touch(s, (int)e.tfinger.fingerID, true,
+                              e.tfinger.x, e.tfinger.y);
+            break;
+
+        case SDL_EVENT_WINDOW_RESIZED:
+            sol_vulkan_signal_resize(&g_vulkan);
+            s->window_width  = e.window.data1;
+            s->window_height = e.window.data2;
+            break;
+
+        case SDL_EVENT_GAMEPAD_ADDED: {
+            SolEvent se = { .type = SOL_EV_DEVICE_ADDED };
+            se.device.device_type  = 6;  /* gamepad */
+            se.device.device_index = (int)e.gdevice.which;
+            input_state_push_event(s, &se);
+            break;
+        }
+        case SDL_EVENT_GAMEPAD_REMOVED: {
+            SolEvent se = { .type = SOL_EV_DEVICE_REMOVED };
+            se.device.device_type  = 6;
+            se.device.device_index = (int)e.gdevice.which;
+            input_state_push_event(s, &se);
+            break;
+        }
         default:
             break;
         }
     }
 }
 
+/* ------------------------------------------------------------------ */
+/* Update                                                              */
+/* ------------------------------------------------------------------ */
 static bool sdl3_update(void) {
-    handle_events();
     if (g_should_close) return false;
 
     /* Process UI */
@@ -247,15 +343,129 @@ static void sdl3_get_size(int* w, int* h) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Platform vtable                                                     */
+/* Audio                                                               */
 /* ------------------------------------------------------------------ */
-static SolPlatform sdl3_platform = {
-    .init     = sdl3_init,
-    .shutdown = sdl3_shutdown,
-    .update   = sdl3_update,
-    .get_size = sdl3_get_size,
-};
 
-const SolPlatform* sol_io_sdl3(void) {
+/* SDL3 audio callback — bridges to SolAudioCallback.
+   Called from SDL's audio thread. Must be real-time safe. */
+static void SDLCALL sdl_audio_callback(void* userdata,
+                                        SDL_AudioStream* stream,
+                                        int additional_amount,
+                                        int total_amount) {
+    (void)userdata;
+    (void)total_amount;
+
+    if (!g_audio_callback || additional_amount <= 0) return;
+
+    /* additional_amount is bytes needed; convert to float frames */
+    int bytes_per_sample = (int)sizeof(float);
+    int channels = 1;  /* we request mono; get from stream spec later */
+    int n_frames = additional_amount / (bytes_per_sample * channels);
+    if (n_frames <= 0) return;
+
+    /* Temp buffer on the audio thread — small, stack-allocated.
+       For larger buffer sizes, this could be preallocated. */
+    float temp[2048];
+    if (n_frames > 2048) n_frames = 2048;
+
+    g_audio_callback(temp, n_frames, channels, g_audio_userdata);
+
+    SDL_PutAudioStreamData(stream, temp, additional_amount);
+}
+
+static bool sdl3_audio_init(int sample_rate, int channels,
+                            SolAudioCallback callback, void* userdata) {
+    g_audio_callback  = callback;
+    g_audio_userdata  = userdata;
+
+    SDL_AudioSpec spec = {
+        .format    = SDL_AUDIO_F32,
+        .channels  = channels,
+        .freq      = sample_rate,
+    };
+
+    g_audio_device = SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec);
+    if (g_audio_device == 0) {
+        SDL_Log("[sdl3] SDL_OpenAudioDevice failed: %s", SDL_GetError());
+        return false;
+    }
+
+    /* Create a stream for resampling/conversion, driven by callback */
+    g_audio_stream = SDL_CreateAudioStream(&spec, &spec);
+    if (!g_audio_stream) {
+        SDL_Log("[sdl3] SDL_CreateAudioStream failed: %s", SDL_GetError());
+        SDL_CloseAudioDevice(g_audio_device);
+        g_audio_device = 0;
+        return false;
+    }
+
+    /* Bind stream to device: device pulls from stream, stream fires callback */
+    if (!SDL_BindAudioStream(g_audio_device, g_audio_stream)) {
+        SDL_Log("[sdl3] SDL_BindAudioStream failed: %s", SDL_GetError());
+        SDL_DestroyAudioStream(g_audio_stream);
+        SDL_CloseAudioDevice(g_audio_device);
+        g_audio_device = 0;
+        return false;
+    }
+
+    /* Set the callback that fills the stream */
+    SDL_SetAudioStreamGetCallback(g_audio_stream, sdl_audio_callback, NULL);
+
+    /* Start playback */
+    if (!SDL_ResumeAudioDevice(g_audio_device)) {
+        SDL_Log("[sdl3] SDL_ResumeAudioDevice failed: %s", SDL_GetError());
+    }
+
+    SDL_Log("[sdl3] Audio: %dHz, %d ch, device opened", sample_rate, channels);
+    return true;
+}
+
+static void sdl3_audio_shutdown(void) {
+    if (g_audio_device != 0) {
+        SDL_PauseAudioDevice(g_audio_device);
+        if (g_audio_stream) {
+            SDL_UnbindAudioStream(g_audio_stream);
+            SDL_DestroyAudioStream(g_audio_stream);
+            g_audio_stream = NULL;
+        }
+        SDL_CloseAudioDevice(g_audio_device);
+        g_audio_device = 0;
+    }
+    g_audio_callback = NULL;
+}
+
+static void sdl3_audio_lock(void) {
+    /* SDL3 doesn't expose a direct device-level lock.
+       We use SDL_PauseAudioDevice as a coarse-grained approach. */
+    if (g_audio_device != 0) {
+        SDL_PauseAudioDevice(g_audio_device);
+    }
+}
+
+static void sdl3_audio_unlock(void) {
+    if (g_audio_device != 0) {
+        SDL_ResumeAudioDevice(g_audio_device);
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* Platform vtable + constructor                                       */
+/* ------------------------------------------------------------------ */
+static SolIO sdl3_platform;
+
+static SolIO* sdl3_get_platform(void) {
+    sdl3_platform.init           = sdl3_init;
+    sdl3_platform.shutdown       = sdl3_shutdown;
+    sdl3_platform.update         = sdl3_update;
+    sdl3_platform.get_size       = sdl3_get_size;
+    sdl3_platform.poll_input     = sdl3_poll_input;
+    sdl3_platform.audio_init     = sdl3_audio_init;
+    sdl3_platform.audio_shutdown  = sdl3_audio_shutdown;
+    sdl3_platform.audio_lock     = sdl3_audio_lock;
+    sdl3_platform.audio_unlock   = sdl3_audio_unlock;
     return &sdl3_platform;
+}
+
+const SolIO* sol_io_sdl3(void) {
+    return sdl3_get_platform();
 }

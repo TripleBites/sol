@@ -6,7 +6,7 @@ import platform as _platform
 
 def _find_library():
     """Locate the sol shared library."""
-    system = _io.system()
+    system = _platform.system()
     if system == "Linux":
         name = "libsol.so"
     elif system == "Darwin":
@@ -19,9 +19,8 @@ def _find_library():
     # Search paths
     script_dir = os.path.dirname(os.path.abspath(__file__))
     candidates = [
-        os.path.join(script_dir, name),                         # alongside bindings.py
-        os.path.join(script_dir, "..", "..", "build", name),    # setuptools build dir
-        os.path.join(script_dir, "..", "engine", name),         # dev: src/sol -> src/engine
+        os.path.join(script_dir, name),                           # alongside bindings.py
+        os.path.join(script_dir, "..", name),                     # one level up (src/sol/)
     ]
 
     for path in candidates:

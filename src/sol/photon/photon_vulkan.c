@@ -1,6 +1,7 @@
-#include "io_vulkan.h"
+#include "photon_vulkan.h"
 #include "../shaders.h"
-#include "../ui/draw_list.h"
+#include "../scene/draw_list.h"
+#include "render2d.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -346,6 +347,9 @@ static void record_commands(SolVulkan* vk, VkCommandBuffer cmd, uint32_t image_i
 
     vkCmdDraw(cmd, 3, 1, 0, 0);
 
+    /* Render 2D batch (game objects, primitives) */
+    sol_vulkan_2d_flush(vk, cmd);
+
     /* Render UI on top */
     if (vk->ui_pipeline != VK_NULL_HANDLE && vk->ui_draw_list) {
         sol_vulkan_ui_draw(vk, cmd, (const DrawList*)vk->ui_draw_list);
@@ -669,6 +673,10 @@ bool sol_vulkan_init(SolVulkan* vk,
 
     vk->frame_index     = 0;
     vk->should_recreate = false;
+
+    /* 2D batch renderer — allocates CPU-side buffers */
+    vk->render2d = render2d_new();
+
     return true;
 }
 
@@ -691,6 +699,13 @@ void sol_vulkan_shutdown(SolVulkan* vk) {
     if (vk->pipeline)        vkDestroyPipeline(vk->device, vk->pipeline, NULL);
     if (vk->pipeline_layout) vkDestroyPipelineLayout(vk->device, vk->pipeline_layout, NULL);
     if (vk->render_pass)     vkDestroyRenderPass(vk->device, vk->render_pass, NULL);
+
+    /* 2D batch renderer */
+    if (vk->render2d) {
+        render2d_free((Render2D*)vk->render2d);
+        free(vk->render2d);
+        vk->render2d = NULL;
+    }
 }
 
 bool sol_vulkan_frame(SolVulkan* vk) {
@@ -766,4 +781,59 @@ void sol_vulkan_signal_resize(SolVulkan* vk) {
 void sol_vulkan_get_size(const SolVulkan* vk, int* w, int* h) {
     *w = vk->width;
     *h = vk->height;
+}
+
+/* ------------------------------------------------------------------ */
+/* 2D batch renderer setup + flush                                    */
+/* ------------------------------------------------------------------ */
+
+bool sol_vulkan_2d_setup(SolVulkan* vk) {
+    /* The 2D renderer reuses the UI pipeline (same vertex format,
+       same shader, same push constants). No new pipeline needed.
+       We just need the Render2D CPU-side buffers initialized.
+       Already done in sol_vulkan_init. */
+    (void)vk;
+    return true;
+}
+
+void sol_vulkan_2d_flush(SolVulkan* vk, VkCommandBuffer cmd) {
+    if (!vk->render2d) return;
+    Render2D* r = (Render2D*)vk->render2d;
+
+    /* Get sorted vertices from Render2D */
+    const uint8_t* verts;
+    uint32_t vert_count;
+    render2d_flush(r, &verts, &vert_count);
+
+    if (vert_count == 0) return;
+
+    /* Cap to GPU buffer size */
+    uint32_t max_verts = MAX_UI_VERTICES;
+    if (vert_count > max_verts) vert_count = max_verts;
+
+    /* Upload to GPU vertex buffer (same buffer as UI) */
+    void* mapped;
+    VkResult res = vkMapMemory(vk->device, vk->ui_vertex_memory, 0,
+                                sizeof(UIVertex) * vert_count, 0, &mapped);
+    if (res != VK_SUCCESS) return;
+    memcpy(mapped, verts, (size_t)vert_count * RENDER2D_VERTEX_SIZE);
+    vkUnmapMemory(vk->device, vk->ui_vertex_memory);
+
+    /* Draw using the UI pipeline */
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vk->ui_pipeline);
+
+    float screen_size[2] = {(float)vk->extent.width, (float)vk->extent.height};
+    vkCmdPushConstants(cmd, vk->ui_pipeline_layout,
+                       VK_SHADER_STAGE_VERTEX_BIT, 0, 8, screen_size);
+
+    VkViewport vp = {0, 0, (float)vk->extent.width, (float)vk->extent.height, 0.f, 1.f};
+    vkCmdSetViewport(cmd, 0, 1, &vp);
+    VkRect2D sc = {{0, 0}, {vk->extent.width, vk->extent.height}};
+    vkCmdSetScissor(cmd, 0, 1, &sc);
+
+    VkDeviceSize offset = 0;
+    vkCmdBindVertexBuffers(cmd, 0, 1, &vk->ui_vertex_buffer, &offset);
+    vkCmdDraw(cmd, vert_count, 1, 0, 0);
+
+    vk->render2d_vertex_count = vert_count;
 }

@@ -82,11 +82,14 @@ sol/
 
 | Document | Description |
 |----------|-------------|
-| [`docs/sol_spec.md`](docs/sol_spec.md) | **Master architecture spec** — read this first |
-| [`docs/scene_spec.md`](docs/scene_spec.md) | UI system detailed spec |
-| [`docs/neptune_spec.md`](docs/neptune_spec.md) | Neptune synth layer spec |
-| [`docs/build_spec.md`](docs/build_spec.md) | Build system spec |
-| [`docs/roadmap.md`](docs/roadmap.md) | Development phases and progress |
+| [`docs/llm.md`](docs/llm.md) | **LLM agent instructions** — conventions, rules, anti-goals |
+| [`docs/llms.md`](docs/llms.md) | **Curated index** of all docs (LLM-friendly entry point) |
+| [`docs/specs/sol_spec.md`](docs/specs/sol_spec.md) | Master architecture spec — read this first |
+| [`docs/specs/scene_spec.md`](docs/specs/scene_spec.md) | UI system detailed spec |
+| [`docs/specs/neptune_spec.md`](docs/specs/neptune_spec.md) | Neptune synth layer spec |
+| [`docs/specs/build_spec.md`](docs/specs/build_spec.md) | Build system spec |
+| [`docs/specs/roadmap.md`](docs/specs/roadmap.md) | Development phases and progress |
+| [`docs/wiki/file_index.md`](docs/wiki/file_index.md) | Every source file with a one-line summary |
 
 ## Design Principles
 

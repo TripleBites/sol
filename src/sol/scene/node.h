@@ -2,6 +2,8 @@
 #define SOL_UI_NODE_H
 
 #include "types.h"
+#include "variant.h"
+#include "input_event.h"
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -9,8 +11,8 @@
 /* Forward declarations */
 typedef struct Node Node;
 typedef struct NodeClass NodeClass;
+typedef struct Signal Signal;
 struct DrawList;
-struct InputEvent;
 
 /* --- Node flags --- */
 enum {
@@ -41,7 +43,7 @@ struct NodeClass {
     void (*arrange_children)(Node *self);   /* containers only */
 
     /* Input */
-    int (*handle_input)(Node *self, const struct InputEvent *ev);
+    int (*handle_input)(Node *self, const UIInputEvent *ev);
 };
 
 /* --- Base Node --- */
@@ -55,6 +57,11 @@ struct Node {
     uint32_t         flags;
     void            *user_data;
     int              refcount;
+
+    /* Signals (dynamic array of Signal*) */
+    Signal         **signals;
+    size_t           signal_count;
+    size_t           signal_capacity;
 };
 
 /* --- Allocation --- */
@@ -72,6 +79,11 @@ void node_set_name(Node *node, const char *name);
 
 /* --- Type check --- */
 bool node_is_type(const Node *node, const char *type_name);
+
+/* --- Signal management --- */
+Signal *node_get_signal(Node *node, const char *name);
+Signal *node_add_signal(Node *node, const char *name);
+void    node_emit_signal(Node *node, const char *name, const Variant *args, size_t arg_count);
 
 /* --- Internal helpers (called by subclass init/destroy) --- */
 void node_base_init(Node *node, const NodeClass *klass);

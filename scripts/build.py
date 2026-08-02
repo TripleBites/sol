@@ -6,8 +6,8 @@ import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-ENGINE_SRC = ROOT / "src" / "engine"
-OUTPUT_DIR = ROOT / "src" / "sol"
+ENGINE_SRC = ROOT / "src" / "sol"
+OUTPUT_DIR = ENGINE_SRC / "python"
 SHADERS_DIR = ENGINE_SRC / "shaders"
 
 
@@ -73,16 +73,38 @@ def build_engine():
         libname = "libsol.so"
 
     sources = [
-        ENGINE_SRC / "engine.c",
-        ENGINE_SRC / "platform" / "io_sdl3.c",
-        ENGINE_SRC / "platform" / "io_vulkan.c",
-        ENGINE_SRC / "platform" / "io_headless.c",
-        ENGINE_SRC / "ui" / "node.c",
-        ENGINE_SRC / "ui" / "control.c",
-        ENGINE_SRC / "ui" / "draw_list.c",
-        ENGINE_SRC / "ui" / "scene_tree.c",
-        ENGINE_SRC / "ui" / "color_rect.c",
-        ENGINE_SRC / "ui" / "vbox_container.c",
+        ENGINE_SRC / "core.c",
+        ENGINE_SRC / "io" / "io_sdl3.c",
+        ENGINE_SRC / "photon" / "photon_vulkan.c",
+        ENGINE_SRC / "photon" / "render2d.c",
+        ENGINE_SRC / "io" / "io_headless.c",
+        ENGINE_SRC / "io" / "input_state.c",
+        ENGINE_SRC / "scene" / "node.c",
+        ENGINE_SRC / "scene" / "control.c",
+        ENGINE_SRC / "scene" / "draw_list.c",
+        ENGINE_SRC / "scene" / "scene_tree.c",
+        ENGINE_SRC / "scene" / "color_rect.c",
+        ENGINE_SRC / "scene" / "vbox_container.c",
+        ENGINE_SRC / "scene" / "hbox_container.c",
+        ENGINE_SRC / "scene" / "margin_container.c",
+        ENGINE_SRC / "scene" / "center_container.c",
+        ENGINE_SRC / "scene" / "signal.c",
+        ENGINE_SRC / "scene" / "button.c",
+        ENGINE_SRC / "scene" / "style_box.c",
+        ENGINE_SRC / "scene" / "panel_container.c",
+        ENGINE_SRC / "scene" / "label.c",
+        ENGINE_SRC / "scene" / "theme.c",
+        ENGINE_SRC / "scene" / "line_edit.c",
+        ENGINE_SRC / "audio" / "audio_node.c",
+        ENGINE_SRC / "audio" / "osc.c",
+        ENGINE_SRC / "audio" / "mixer.c",
+        ENGINE_SRC / "audio" / "gain.c",
+        ENGINE_SRC / "audio" / "envelope.c",
+        ENGINE_SRC / "audio" / "voice.c",
+        ENGINE_SRC / "audio" / "pipeline.c",
+        ENGINE_SRC / "debug" / "mem.c",
+        ENGINE_SRC / "debug" / "logger.c",
+        ENGINE_SRC / "text" / "utf8.c",
     ]
 
     # Check if any source changed
@@ -116,7 +138,7 @@ def build_engine():
     except (subprocess.CalledProcessError, FileNotFoundError):
         print("[build] Warning: pkg-config sdl3 failed, using defaults")
 
-    libs = sdl3_libs + ["-lvulkan", "-lm"]
+    libs = sdl3_libs + ["-lvulkan", "-lm", "-lasound", "-lpthread"]
 
     cc = os.environ.get("CC", "gcc")
     cflags = [cc, "-std=c99", "-O3", "-fPIC", "-shared"]

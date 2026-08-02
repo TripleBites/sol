@@ -1,6 +1,8 @@
 # Sol UI Engine Specification
 ## A Godot-Inspired Retained-Mode UI System for C99
 
+> **TL;DR:** Retained-mode 2D UI in C99. Node tree with manual vtables + refcounting. Control = rect + anchors + size flags. Layout = two-pass (measure bottom-up, arrange top-down). DrawList = renderer-agnostic command buffer. SceneTree = process→layout→draw each frame. Python wrappers via ctypes.
+
 **Version:** 1.0-draft  
 **Date:** 2026-07-28  
 **Status:** Prototype implemented at `src/engine/ui/`  

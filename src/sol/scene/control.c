@@ -50,7 +50,7 @@ Vec2 control_get_min_size(const Control *c) {
     return out;
 }
 
-static int control_handle_input(Node *self, const struct InputEvent *ev) {
+static int control_handle_input(Node *self, const UIInputEvent *ev) {
     (void)self; (void)ev;
     return 0;  /* unhandled */
 }
@@ -132,15 +132,4 @@ void control_compute_global_rect(Control *c, const Rect *parent_global) {
     }
 }
 
-/* Default draw - draws nothing (ColorRect overrides this) */
-void control_draw(Control *c, DrawList *dl) {
-    /* Push clip to the control's global rect */
-    draw_list_push_clip(dl, c->global_rect);
 
-    /* Subclasses add their own drawing here via the klass->draw vtable */
-    if (c->base.klass->draw) {
-        c->base.klass->draw(&c->base, dl);
-    }
-
-    draw_list_pop_clip(dl);
-}

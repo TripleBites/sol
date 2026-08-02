@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 #include "node.h"
+#include "signal.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -72,10 +73,20 @@ void node_base_init(Node *node, const NodeClass *klass) {
 }
 
 void node_base_destroy(Node *node) {
+    /* Remove all children first */
     while (node->child_count > 0) {
         Node *child = node->children[node->child_count - 1];
         node_remove_child(node, child);
     }
+
+    /* Free all signals */
+    for (size_t i = 0; i < node->signal_count; i++) {
+        signal_free(node->signals[i]);
+    }
+    free(node->signals);
+    node->signals = NULL;
+    node->signal_count = 0;
+    node->signal_capacity = 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -169,4 +180,51 @@ void node_traverse_postorder(Node *node, NodeVisitor visit, void *userdata) {
         node_traverse_postorder(node->children[i], visit, userdata);
     }
     if (visit) visit(node, userdata);
+}
+
+/* ------------------------------------------------------------------ */
+/* Signal management                                                   */
+/* ------------------------------------------------------------------ */
+Signal *node_get_signal(Node *node, const char *name) {
+    if (!node || !name) return NULL;
+    for (size_t i = 0; i < node->signal_count; i++) {
+        if (signal_get_name(node->signals[i]) &&
+            strcmp(signal_get_name(node->signals[i]), name) == 0) {
+            return node->signals[i];
+        }
+    }
+    return NULL;
+}
+
+Signal *node_add_signal(Node *node, const char *name) {
+    if (!node || !name) return NULL;
+
+    /* Return existing signal if already added */
+    Signal *existing = node_get_signal(node, name);
+    if (existing) return existing;
+
+    Signal *sig = signal_new(name);
+    if (!sig) return NULL;
+
+    if (node->signal_count >= node->signal_capacity) {
+        size_t new_cap = node->signal_capacity ? node->signal_capacity * 2 : 4;
+        Signal **tmp = realloc(node->signals, sizeof(Signal*) * new_cap);
+        if (!tmp) {
+            signal_free(sig);
+            return NULL;
+        }
+        node->signals = tmp;
+        node->signal_capacity = new_cap;
+    }
+
+    node->signals[node->signal_count++] = sig;
+    return sig;
+}
+
+void node_emit_signal(Node *node, const char *name,
+                      const Variant *args, size_t arg_count) {
+    Signal *sig = node_get_signal(node, name);
+    if (sig) {
+        signal_emit(sig, node, args, arg_count);
+    }
 }

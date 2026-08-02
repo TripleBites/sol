@@ -22,7 +22,7 @@
 |------|--------|-------|
 | Fix `scripts/build_engine.py` to match `src/sol/` paths | 🔜 | Current script references wrong paths |
 | Fix `#include "io_vulkan.h"` → `"../photon/photon_vulkan.h"` | 🔜 | In `io_sdl3.c` |
-| Extend `SolPlatform` with `audio_init/audio_shutdown/audio_lock/audio_unlock` | 🔜 | `src/sol/io/io.h` |
+| Extend `SolIO` with `audio_init/audio_shutdown/audio_lock/audio_unlock` | 🔜 | `src/sol/io/io.h` |
 | Implement SDL3 audio backend (`SDL_AudioStream`) | 🔜 | `src/sol/io/io_sdl3.c` |
 | Implement ALSA audio backend (`snd_pcm`) | 🔜 | `src/sol/io/io.c` (headless) |
 | `AudioNode` base type (extends `Node`) | 🔜 | `src/sol/audio/audio_node.h/c` |
@@ -60,7 +60,7 @@
 | `src/sol/debug/logger.h/c` — leveled `sol_log()` | ⬜ |
 | `src/sol/debug/prof.h/c` — scoped `SOL_PROFILE()` | ⬜ |
 | Migrate ALL existing C code to `sol_malloc`/`sol_log` | ⬜ |
-| `src/sol/text/utf8.h/c` — UTF-8 iterator + validation | ⬜ |
+| `src/sol/text/utf8.h/c` — UTF-8 iterator + validation | ✅ |
 | `src/sol/text/font.h/c` — stb_truetype glyph cache | ⬜ |
 | `src/sol/text/emoji.h/c` — emoji codepoint detection | ⬜ |
 | `src/sol/text/layout.h/c` — text wrapping + alignment | ⬜ |
@@ -72,14 +72,18 @@
 
 | Task | Status |
 |------|--------|
-| `HBoxContainer` — horizontal layout | ⬜ |
-| `MarginContainer` — padding | ⬜ |
-| `CenterContainer` — centering | ⬜ |
-| `Label` — text via `src/sol/text/` | ⬜ |
-| `Button` — clickable with signals | ⬜ |
-| `StyleBox` — 9-slice, rounded corners | ⬜ |
-| Signal system (`signal_connect`/`signal_emit`) | ⬜ |
-| Input event routing (hit-test, bubble, focus) | ⬜ |
+| `HBoxContainer` — horizontal layout | ✅ |
+| `MarginContainer` — padding | ✅ |
+| `CenterContainer` — centering | ✅ |
+| `Label` — text widget | ✅ |
+| `Button` — clickable with signals | ✅ |
+| `StyleBox` — flat, rounded, bordered styles | ✅ |
+| Signal system (`signal_connect`/`signal_emit`) | ✅ |
+| `Variant` — discriminated union for signal args | ✅ |
+| `PanelContainer` — StyleBox background + child | ✅ |
+| `Render2D` — immediate-mode 2D batch renderer | ✅ |
+| Input event routing (hit-test, bubble, focus) | 🔧 |
+| Theme system | ⬜ |
 
 ---
 
@@ -87,12 +91,12 @@
 
 | Task | Status |
 |------|--------|
-| Neptune `gui/synth_panel.py` — Sol Control tree for synth UI | ⬜ |
-| Waveform viewer widget (DrawList lines from probe data) | ⬜ |
-| Knob widget (mouse-drag, maps to `send_set_param`) | ⬜ |
-| Pipeline node inspector (boxes, labels, probe taps) | ⬜ |
-| `patch.py` — JSON save/load of AudioNode tree | ⬜ |
-| `@register_audio_node` decorator for extensibility | ⬜ |
+| Neptune `gui/synth_panel.py` — Sol Control tree for synth UI | 🔜 |
+| Waveform viewer widget (DrawList lines from probe data) | 🔜 |
+| Knob widget (mouse-drag, maps to `send_set_param`) | 🔜 |
+| Pipeline node inspector (boxes, labels, probe taps) | 🔜 |
+| `patch.py` — JSON save/load of AudioNode tree | 🔜 |
+| `@register_audio_node` decorator for extensibility | 🔜 |
 
 ---
 
