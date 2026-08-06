@@ -1,13 +1,32 @@
 [project]
 name = "sol"
 version = "0.1.0"
-description = "Sol Engine - C99 SDL3 + Vulkan game engine with Python bindings"
-requires-python = ">=3.10"
+description = "Sol Game Engine"
+readme = "README.md"
+authors = [
+    { name = "TripleBites", email = "TripleBites@proton.me" }
+]
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+sol = "sol:main"
+
+[tool.maturin]
+module-name = "sol._core"
+python-packages = ["sol"]
+python-source = "src"
+
+[tool.uv]
+cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.rs" }, { file = "Cargo.toml" }, { file = "Cargo.lock" }]
 
 [build-system]
-requires = ["setuptools"]
-build-backend = "setuptools.build_meta"
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
 
-[tool.setuptools]
-packages = ["sol"]
-package-dir = { "sol" = "src/sol" }
+[dependency-groups]
+dev = [
+    "maturin>=1.14.1",
+    "maturin-import-hook>=0.3.0",
+    "pytest>=9.1.1",
+]

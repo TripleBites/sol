@@ -1,1 +1,0 @@
-# Terra Game / Application Development Editor
